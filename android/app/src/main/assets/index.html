@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Expense & Notification Tracker</title>
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PocketLedger" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" id="pwaManifestLink" href="data:application/manifest+json,%7B%22name%22%3A%22PocketLedger%20Local%22%2C%22short_name%22%3A%22PocketLedger%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f172a%22%2C%22theme_color%22%3A%22%2310b981%22%7D" />
+
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.85);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      backdrop-filter: blur(8px);
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Top Header -->
+  <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-lg">
+          ₹
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">PocketLedger Local</h1>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 100% On-Device
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Auto-parse bank & UPI notifications, categorize, comment, and export to Excel</p>
+        </div>
+      </div>
+
+      <!-- Navigation & Primary Actions -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="inline-flex rounded-lg bg-slate-800 p-1 border border-slate-700">
+          <button id="tabBtnTracker" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white transition">
+            Expense Tracker
+          </button>
+          <button id="tabBtnAndroid" class="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white transition">
+            Android APK & iOS Setup
+          </button>
+        </div>
+
+        <button id="btnExportExcel" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Export Excel (.xlsx)
+        </button>
+
+        <button id="btnExportCsv" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          Export CSV
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+
+    <!-- VIEW 1: EXPENSE TRACKER -->
+    <div id="viewTracker" class="space-y-6">
+
+      <!-- KPI Summary Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="glass-card rounded-xl p-4">
+          <div class="text-xs font-medium text-slate-400">Total Filtered Spend</div>
+          <div id="kpiTotalSpend" class="text-2xl font-bold text-white mt-1">₹0.00</div>
+          <div id="kpiTxCount" class="text-xs text-emerald-400 mt-1">0 transactions recorded</div>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <div class="text-xs font-medium text-slate-400">This Month's Spend</div>
+          <div id="kpiMonthSpend" class="text-2xl font-bold text-white mt-1">₹0.00</div>
+          <div id="kpiAvgSpend" class="text-xs text-slate-400 mt-1">Avg ₹0 / purchase</div>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <div class="text-xs font-medium text-slate-400">Top Category</div>
+          <div id="kpiTopCategory" class="text-xl font-bold text-amber-300 mt-1 truncate">—</div>
+          <div id="kpiTopCategoryAmt" class="text-xs text-slate-400 mt-1">₹0.00</div>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <div class="text-xs font-medium text-slate-400">Comments & Storage Status</div>
+          <div id="kpiCommentCount" class="text-xl font-bold text-sky-300 mt-1">0 with notes</div>
+          <div class="flex items-center justify-between mt-1">
+            <span id="storageBadge" class="text-xs text-emerald-400">Saved in LocalStorage</span>
+            <button id="btnBackupJson" class="text-xs underline text-slate-300 hover:text-white">Backup JSON</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notification Parser & Manual Add Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left 7 cols: Smart Notification / SMS Auto-Parser + Manual Form -->
+        <div class="lg:col-span-7 space-y-6">
+
+          <!-- Smart Notification & SMS Auto-Parser -->
+          <div class="glass-card rounded-xl p-5 border-l-4 border-l-emerald-500">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div>
+                <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                  <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  Smart Purchase Notification & SMS Listener
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">
+                  Paste or simulate any UPI, Google Pay, bank alert, or card notification to auto-extract amount, merchant, category, and reference ID.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" id="simUpiBtn" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition">
+                  + Simulate UPI Alert
+                </button>
+                <button type="button" id="simCardBtn" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition">
+                  + Simulate Card Alert
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <textarea id="notifInput" rows="3" placeholder="Example: Rs. 450.00 debited from A/c XX4821 on 16-11-26 to VPA rapido@axis (UPI Ref 632189401211). Or click '+ Simulate UPI Alert' above..." class="w-full rounded-lg bg-slate-900/90 border border-slate-700 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"></textarea>
+
+              <!-- Live Parsed Preview Pill Bar -->
+              <div id="parsedPreviewBox" class="hidden rounded-lg bg-slate-900/80 border border-slate-700/80 p-3 text-xs space-y-2">
+                <div class="flex items-center justify-between text-slate-400">
+                  <span class="font-semibold text-emerald-400">Detected from Notification:</span>
+                  <span id="previewConfidence" class="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300">Ready to save</span>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  <div class="bg-slate-800/80 p-2 rounded">
+                    <span class="text-[10px] text-slate-400 block">Amount</span>
+                    <span id="prevAmount" class="font-bold text-white">—</span>
+                  </div>
+                  <div class="bg-slate-800/80 p-2 rounded">
+                    <span class="text-[10px] text-slate-400 block">Merchant / Payee</span>
+                    <span id="prevMerchant" class="font-semibold text-white truncate block">—</span>
+                  </div>
+                  <div class="bg-slate-800/80 p-2 rounded">
+                    <span class="text-[10px] text-slate-400 block">Auto-Category</span>
+                    <span id="prevCategory" class="font-semibold text-amber-300 truncate block">—</span>
+                  </div>
+                  <div class="bg-slate-800/80 p-2 rounded">
+                    <span class="text-[10px] text-slate-400 block">Mode / Ref</span>
+                    <span id="prevMode" class="font-medium text-slate-300 truncate block">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-col sm:flex-row gap-2">
+                <input id="notifCommentInput" type="text" placeholder="Add an optional comment before saving (e.g., 'Office commute', 'Split with friend')..." class="flex-1 rounded-lg bg-slate-900/90 border border-slate-700 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500" />
+                <button type="button" id="btnParseAndSave" class="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition whitespace-nowrap">
+                  Capture & Save Expense
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Manual / Detailed Expense Entry Form -->
+          <div class="glass-card rounded-xl p-5">
+            <h2 class="text-sm font-bold text-white mb-3">Add or Customize Expense Manually</h2>
+            <form id="manualExpenseForm" class="grid grid-cols-1 sm:grid-cols-6 gap-3">
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">Amount (₹) *</label>
+                <input id="manAmount" type="number" step="0.01" min="0.01" required placeholder="0.00" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">Merchant / Payee *</label>
+                <input id="manMerchant" type="text" required placeholder="e.g., Amazon, Rapido, Zomato" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">Category *</label>
+                <select id="manCategory" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"></select>
+              </div>
+
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">Date & Time *</label>
+                <input id="manDate" type="datetime-local" required class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">Payment Mode</label>
+                <select id="manMode" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                  <option value="UPI / Google Pay">UPI / Google Pay</option>
+                  <option value="Credit Card">Credit Card</option>
+                  <option value="Debit Card">Debit Card</option>
+                  <option value="NetBanking">NetBanking</option>
+                  <option value="Cash">Cash</option>
+                </select>
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">Add New Category</label>
+                <div class="flex gap-1">
+                  <input id="newCategoryInput" type="text" placeholder="Custom category..." class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+                  <button type="button" id="btnAddCategory" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-400 border border-slate-700">+</button>
+                </div>
+              </div>
+
+              <div class="sm:col-span-5">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">Comment / Notes</label>
+                <input id="manComment" type="text" placeholder="Add context, bill details, warranty note, or reimbursement tag..." class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div class="sm:col-span-1 flex items-end">
+                <button type="submit" class="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition">
+                  Add Entry
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Right 5 cols: Category Chart & Breakdown -->
+        <div class="lg:col-span-5 glass-card rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-bold text-white">Category Spending Breakdown</h2>
+              <span class="text-xs text-slate-400">Live visual summary</span>
+            </div>
+            <div class="relative h-64 w-full">
+              <canvas id="categoryChart"></canvas>
+            </div>
+          </div>
+
+          <div id="categoryLegendList" class="mt-4 pt-3 border-t border-slate-800 space-y-1.5 max-h-44 overflow-y-auto text-xs">
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Filter Bar & Expense Ledger Table -->
+      <div class="glass-card rounded-xl p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-bold text-white">Purchase History & Inline Comments</h2>
+            <p class="text-xs text-slate-400">Click any category or comment cell in the table below to update it immediately.</p>
+          </div>
+
+          <!-- Filters -->
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="filterSearch" type="text" placeholder="Search merchant, comment, ref..." class="rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500" />
+            <select id="filterCategory" class="rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+              <option value="ALL">All Categories</option>
+            </select>
+            <select id="filterSource" class="rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+              <option value="ALL">All Sources</option>
+              <option value="Notification">Notification Auto-Captured</option>
+              <option value="Manual">Manual Entry</option>
+            </select>
+            <label class="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700">
+              <span>Import JSON</span>
+              <input id="importJsonInput" type="file" accept=".json" class="hidden" />
+            </label>
+            <button id="btnClearAll" type="button" class="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border border-rose-800/50 text-xs transition">
+              Reset Data
+            </button>
+          </div>
+        </div>
+
+        <!-- Responsive Table -->
+        <div class="overflow-x-auto rounded-lg border border-slate-800">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+                <th class="py-2.5 px-3 font-semibold">Date & Time</th>
+                <th class="py-2.5 px-3 font-semibold">Merchant / Payee</th>
+                <th class="py-2.5 px-3 font-semibold">Category</th>
+                <th class="py-2.5 px-3 font-semibold text-right">Amount (₹)</th>
+                <th class="py-2.5 px-3 font-semibold">Mode & Source</th>
+                <th class="py-2.5 px-3 font-semibold min-w-[220px]">Comment / Note (Editable)</th>
+                <th class="py-2.5 px-3 font-semibold text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expenseTableBody" class="divide-y divide-slate-800/70">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW 2: ANDROID AUTO-LISTENER BRIDGE GUIDE -->
+    <div id="viewAndroid" class="hidden space-y-6">
+      <div class="glass-card rounded-xl p-6 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Real-Time Mobile Notification Capture</span>
+            <h2 class="text-lg font-bold text-white mt-0.5">How to Auto-Capture Every Phone Payment Notification Into This App</h2>
+          </div>
+          <button id="btnTestUrlParams" class="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition">
+            Test URL Auto-Capture Now
+          </button>
+        </div>
+
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Because mobile operating systems (Android and iOS) sandbox browser apps from reading system-wide notifications in the background without permission, this app includes a built-in <strong>URL Query Bridge (`?auto_notif=...`)</strong>. Whenever your phone receives a Google Pay, PhonePe, Paytm, or bank SMS notification, a tiny local automation rule on your phone can open this app with the notification text—and the app will automatically parse, categorize, and save it to your local storage.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="text-xs font-bold text-emerald-400">Step 1: Trigger on Payment Alert</div>
+            <p class="text-xs text-slate-400">
+              In <strong>MacroDroid</strong> (free on Android) or <strong>Tasker</strong>, add a Trigger for <em>Notification Received</em> from Google Pay, PhonePe, Paytm, or Messages containing keywords like <code>debited</code>, <code>paid</code>, or <code>spent</code>.
+            </p>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="text-xs font-bold text-sky-400">Step 2: Pass Notification to Local URL</div>
+            <p class="text-xs text-slate-400">
+              Add an Action: <em>Open Website / HTTP GET</em> and pass the notification body variable into the <code>?auto_notif=</code> parameter of your saved app file.
+            </p>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="text-xs font-bold text-amber-400">Step 3: Add Comment & Export to Excel</div>
+            <p class="text-xs text-slate-400">
+              The purchase is immediately logged locally in your browser with its auto-detected category. Add your comment anytime and click <strong>Export Excel (.xlsx)</strong>.
+            </p>
+          </div>
+        </div>
+
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-300">Supported Notification & SMS Formats (Built-in Regex Engine)</span>
+            <span class="text-[11px] text-emerald-400">Tested with Indian Banks & UPI Apps</span>
+          </div>
+          <ul class="text-xs text-slate-400 list-disc list-inside space-y-1">
+            <li><code>Rs. 340.00 debited from A/c XX1234 on 16-11-26 to VPA swiggy@icici (UPI Ref 632011223344)</code></li>
+            <li><code>Paid ₹185 to Rapido Bike Taxi using Google Pay. UPI transaction ID: 631998877665</code></li>
+            <li><code>INR 1,299.00 spent on HDFC Bank Card XX8821 at AMAZON INDIA on 16-Nov-2026</code></li>
+            <li><code>Your A/c XXXXX9012 is debited by Rs 650.00 towards INDIKARTING; Ref No 4123987123</code></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-4 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-semibold shadow-lg transition">
+    Saved!
+  </div>
+
+  <!-- Confirmation Modal for Reset -->
+  <div id="resetModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 flex items-center justify-center p-4">
+    <div class="glass-card max-w-sm w-full rounded-xl p-5 space-y-4 border border-slate-700">
+      <h3 class="text-sm font-bold text-white">Reset All Stored Expenses?</h3>
+      <p class="text-xs text-slate-300">
+        This will clear your current local expense list and restore the starter sample transactions. Make sure you have exported to Excel first if needed.
+      </p>
+      <div class="flex justify-end gap-2">
+        <button id="btnCancelReset" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium">Cancel</button>
+        <button id="btnConfirmReset" class="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold">Yes, Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'pocketledger_local_expenses_v1';
+    const CAT_STORAGE_KEY = 'pocketledger_local_categories_v1';
+
+    const DEFAULT_CATEGORIES = [
+      'Food & Dining',
+      'Commute & Fuel',
+      'Shopping & E-Commerce',
+      'Groceries',
+      'Sports & Recreation',
+      'Bills & Subscriptions',
+      'Personal Care',
+      'Health & Fitness',
+      'Other'
+    ];
+
+    const CATEGORY_COLORS = {
+      'Food & Dining': '#f59e0b',
+      'Commute & Fuel': '#10b981',
+      'Shopping & E-Commerce': '#6366f1',
+      'Groceries': '#84cc16',
+      'Sports & Recreation': '#06b6d4',
+      'Bills & Subscriptions': '#ec4899',
+      'Personal Care': '#a855f7',
+      'Health & Fitness': '#14b8a6',
+      'Other': '#94a3b8'
+    };
+
+    const SAMPLE_NOTIFICATIONS = [
+      "Paid ₹165.00 to RAPIDO BIKE TAXI using Google Pay on 16-11-2026. UPI Ref: 632110982341.",
+      "Rs. 540.00 debited from A/c XX4821 on 16-11-26 to VPA zomato@hdfcbank (UPI Ref 632189445512).",
+      "INR 850.00 spent on HDFC Bank Credit Card XX9012 at TSG SPORTS ARENA on 16-Nov-2026.",
+      "Rs 1,499.00 debited from A/c XX4821 towards AMAZON PAY INDIA; UPI Ref 632199887711.",
+      "Paid ₹420.00 to SHELL PETROL PUMP via UPI Ref 632177665544."
+    ];
+
+    const INITIAL_EXPENSES = [
+      {
+        id: 'exp-101',
+        date: '2026-11-16T09:30',
+        merchant: 'Rapido Bike Taxi',
+        category: 'Commute & Fuel',
+        amount: 145.00,
+        mode: 'UPI / Google Pay',
+        source: 'Notification',
+        refId: '632109481201',
+        comment: 'Morning commute to office',
+        rawNotification: 'Paid ₹145.00 to Rapido Bike Taxi using Google Pay. UPI Ref 632109481201'
+      },
+      {
+        id: 'exp-102',
+        date: '2026-11-15T20:15',
+        merchant: 'TSG Sports Arena',
+        category: 'Sports & Recreation',
+        amount: 600.00,
+        mode: 'UPI / Google Pay',
+        source: 'Notification',
+        refId: '632088319044',
+        comment: 'Evening badminton court booking with friends',
+        rawNotification: 'Rs. 600.00 debited from A/c XX4821 to VPA tsgsports@okaxis (UPI Ref 632088319044)'
+      },
+      {
+        id: 'exp-103',
+        date: '2026-11-14T14:20',
+        merchant: 'Amazon India',
+        category: 'Shopping & E-Commerce',
+        amount: 799.00,
+        mode: 'Credit Card',
+        source: 'Notification',
+        refId: 'AMZ-884120',
+        comment: 'ShineXPro helmet cleaner & microfiber cloth',
+        rawNotification: 'INR 799.00 spent on Card XX9012 at AMAZON INDIA on 14-Nov-2026'
+      },
+      {
+        id: 'exp-104',
+        date: '2026-11-13T13:10',
+        merchant: 'Swiggy',
+        category: 'Food & Dining',
+        amount: 320.00,
+        mode: 'UPI / Google Pay',
+        source: 'Manual',
+        refId: '631877120931',
+        comment: 'Lunch order during audit review',
+        rawNotification: ''
+      }
+    ];
+
+    let expenses = [];
+    let categories = [];
+    let chartInstance = null;
+    let simIndex = 0;
+
+    function safeLoadStorage() {
+      try {
+        const rawExp = localStorage.getItem(STORAGE_KEY);
+        const rawCat = localStorage.getItem(CAT_STORAGE_KEY);
+        expenses = rawExp ? JSON.parse(rawExp) : [...INITIAL_EXPENSES];
+        categories = rawCat ? JSON.parse(rawCat) : [...DEFAULT_CATEGORIES];
+      } catch (e) {
+        expenses = [...INITIAL_EXPENSES];
+        categories = [...DEFAULT_CATEGORIES];
+        const badge = document.getElementById('storageBadge');
+        if (badge) badge.textContent = 'In-Memory Session Mode';
+      }
+    }
+
+    function safeSaveStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+        localStorage.setItem(CAT_STORAGE_KEY, JSON.stringify(categories));
+      } catch (e) {
+        // Ignore storage errors in restricted sandboxes
+      }
+    }
+
+    function showToast(msg) {
+      const box = document.getElementById('toastBox');
+      box.textContent = msg;
+      box.classList.remove('hidden');
+      setTimeout(() => {
+        box.classList.add('hidden');
+      }, 2600);
+    }
+
+    function formatINR(num) {
+      const val = Number(num) || 0;
+      return '₹' + val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function inferCategory(merchant, rawText) {
+      const text = ((merchant || '') + ' ' + (rawText || '')).toLowerCase();
+      if (/rapido|uber|ola|petrol|shell|hpcl|bpcl|irctc|metro|ferry|m2m|toll|parking|auto|cab/.test(text)) {
+        return 'Commute & Fuel';
+      }
+      if (/swiggy|zomato|restaurant|cafe|starbucks|mcdonald|dominos|pizza|dining|food|baker/.test(text)) {
+        return 'Food & Dining';
+      }
+      if (/blinkit|zepto|instamart|bigbasket|dmart|grocery|supermarket|nature/.test(text)) {
+        return 'Groceries';
+      }
+      if (/amazon|flipkart|myntra|ajio|nykaa|decathlon|kreo|msi|store|retail/.test(text)) {
+        return 'Shopping & E-Commerce';
+      }
+      if (/tsg|badminton|indikarting|timezone|bookmyshow|turf|arena|sport|game/.test(text)) {
+        return 'Sports & Recreation';
+      }
+      if (/pilgrim|ravel|hivado|perfume|salon|barber|grooming/.test(text)) {
+        return 'Personal Care';
+      }
+      if (/gym|fitness|cult|pharmacy|apollo|medplus|hospital|clinic|protein/.test(text)) {
+        return 'Health & Fitness';
+      }
+      if (/airtel|jio|vi|electricity|adani|tata power|netflix|spotify|prime|recharge|bill/.test(text)) {
+        return 'Bills & Subscriptions';
+      }
+      return 'Other';
+    }
+
+    function parseNotificationText(rawText) {
+      if (!rawText || !rawText.trim()) return null;
+      const text = rawText.trim();
+
+      // 1. Extract Amount (handles Rs., INR, ₹, debited by, Paid, etc.)
+      let amount = null;
+      const amtRegex = /(?:rs\.?|inr|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)|([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:rs\.?|inr|₹)/i;
+      const amtMatch = text.match(amtRegex);
+      if (amtMatch) {
+        const numStr = (amtMatch[1] || amtMatch[2]).replace(/,/g, '');
+        amount = parseFloat(numStr);
+      } else {
+        const fallbackNum = text.match(/(?:debited|paid|spent|for)\s+(?:by\s+)?([0-9,]+(?:\.[0-9]{1,2})?)/i);
+        if (fallbackNum) {
+          amount = parseFloat(fallbackNum[1].replace(/,/g, ''));
+        }
+      }
+
+      // 2. Extract Payment Mode
+      let mode = 'UPI / Google Pay';
+      if (/credit card|cc\s+xx/i.test(text)) mode = 'Credit Card';
+      else if (/debit card|dc\s+xx|atm/i.test(text)) mode = 'Debit Card';
+      else if (/netbanking|neft|imps|rtgs/i.test(text)) mode = 'NetBanking';
+
+      // 3. Extract Reference ID
+      let refId = '';
+      const refMatch = text.match(/(?:upi\s*ref|ref\s*no\.?|transaction\s*id|txn\s*id|utr)[:\s#-]*([a-zA-Z0-9-]{6,20})/i);
+      if (refMatch) {
+        refId = refMatch[1];
+      }
+
+      // 4. Extract Merchant / Payee
+      let merchant = 'Unknown Merchant';
+      const vpaMatch = text.match(/to\s+vpa\s+([a-zA-Z0-9._-]+@[a-zA-Z0-9]+)/i);
+      const paidToMatch = text.match(/(?:paid\s+(?:₹|rs\.?|inr)?\s*[0-9,.]+\s+to|towards|at|to)\s+([A-Za-z0-9\s&._-]{2,35}?)(?:\s+on\b|\s+using\b|\s+via\b|\s+upi\b|[.;,(\n]|$)/i);
+
+      if (paidToMatch && paidToMatch[1] && !/^vpa$/i.test(paidToMatch[1].trim())) {
+        merchant = paidToMatch[1].trim();
+      } else if (vpaMatch) {
+        const handle = vpaMatch[1].split('@')[0].replace(/[0-9._-]+/g, ' ').trim();
+        merchant = handle ? handle.toUpperCase() : vpaMatch[1];
+      }
+
+      // Clean up merchant capitalization
+      if (merchant.length > 2 && merchant === merchant.toUpperCase()) {
+        merchant = merchant.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      }
+
+      const category = inferCategory(merchant, text);
+
+      // Current local ISO datetime
+      const now = new Date();
+      const tzOffset = now.getTimezoneOffset() * 60000;
+      const localISOTime = new Date(now - tzOffset).toISOString().slice(0, 16);
+
+      return {
+        amount: amount || 0,
+        merchant,
+        category,
+        mode,
+        refId,
+        date: localISOTime,
+        rawNotification: text
+      };
+    }
+
+    function populateCategoryDropdowns() {
+      const manCat = document.getElementById('manCategory');
+      const filterCat = document.getElementById('filterCategory');
+      const currentFilter = filterCat.value || 'ALL';
+
+      manCat.innerHTML = '';
+      categories.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        manCat.appendChild(opt);
+      });
+
+      filterCat.innerHTML = '<option value="ALL">All Categories</option>';
+      categories.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        filterCat.appendChild(opt);
+      });
+      filterCat.value = categories.includes(currentFilter) ? currentFilter : 'ALL';
+    }
+
+    function getFilteredExpenses() {
+      const search = (document.getElementById('filterSearch').value || '').toLowerCase().trim();
+      const cat = document.getElementById('filterCategory').value;
+      const src = document.getElementById('filterSource').value;
+
+      return expenses.filter(item => {
+        if (cat !== 'ALL' && item.category !== cat) return false;
+        if (src !== 'ALL' && item.source !== src) return false;
+        if (search) {
+          const hay = `${item.merchant} ${item.category} ${item.comment || ''} ${item.refId || ''} ${item.mode || ''}`.toLowerCase();
+          if (!hay.includes(search)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderAll() {
+      const filtered = getFilteredExpenses();
+
+      // KPIs
+      const total = filtered.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
+      document.getElementById('kpiTotalSpend').textContent = formatINR(total);
+      document.getElementById('kpiTxCount').textContent = `${filtered.length} transaction${filtered.length === 1 ? '' : 's'} shown`;
+
+      const nowMonth = new Date().toISOString().slice(0, 7);
+      const monthTx = expenses.filter(x => (x.date || '').startsWith(nowMonth));
+      const monthSpend = monthTx.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
+      const avg = filtered.length ? total / filtered.length : 0;
+      document.getElementById('kpiMonthSpend').textContent = formatINR(monthSpend);
+      document.getElementById('kpiAvgSpend').textContent = `Avg ${formatINR(avg)} / purchase`;
+
+      // Top Category
+      const catTotals = {};
+      filtered.forEach(x => {
+        catTotals[x.category] = (catTotals[x.category] || 0) + (Number(x.amount) || 0);
+      });
+      const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+      if (sortedCats.length > 0) {
+        document.getElementById('kpiTopCategory').textContent = sortedCats[0][0];
+        document.getElementById('kpiTopCategoryAmt').textContent = formatINR(sortedCats[0][1]);
+      } else {
+        document.getElementById('kpiTopCategory').textContent = '—';
+        document.getElementById('kpiTopCategoryAmt').textContent = '₹0.00';
+      }
+
+      const withComments = expenses.filter(x => x.comment && x.comment.trim().length > 0).length;
+      document.getElementById('kpiCommentCount').textContent = `${withComments} of ${expenses.length} with notes`;
+
+      renderTable(filtered);
+      renderChart(sortedCats, total);
+    }
+
+    function renderTable(list) {
+      const tbody = document.getElementById('expenseTableBody');
+      tbody.innerHTML = '';
+
+      if (list.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="7" class="py-8 text-center text-slate-500">No matching purchases found. Simulate a notification above or add an entry manually.</td>`;
+        tbody.appendChild(tr);
+        return;
+      }
+
+      list.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40 transition';
+
+        const formattedDate = (item.date || '').replace('T', ' ');
+        const badgeColor = item.source === 'Notification'
+          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+          : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
+
+        // Category select options
+        const catOptions = categories.map(c =>
+          `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`
+        ).join('');
+
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 whitespace-nowrap text-slate-300 font-mono text-[11px]">${formattedDate}</td>
+          <td class="py-2.5 px-3">
+            <div class="font-semibold text-white">${escapeHtml(item.merchant)}</div>
+            ${item.refId ? `<div class="text-[10px] text-slate-500">Ref: ${escapeHtml(item.refId)}</div>` : ''}
+          </td>
+          <td class="py-2.5 px-3">
+            <select data-id="${item.id}" class="row-cat-select rounded bg-slate-900 border border-slate-700 px-2 py-1 text-xs text-amber-300 focus:outline-none focus:border-emerald-500">
+              ${catOptions}
+            </select>
+          </td>
+          <td class="py-2.5 px-3 text-right font-bold text-white whitespace-nowrap">${formatINR(item.amount)}</td>
+          <td class="py-2.5 px-3 whitespace-nowrap">
+            <div class="text-slate-300">${escapeHtml(item.mode || 'UPI')}</div>
+            <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] border ${badgeColor}">${escapeHtml(item.source || 'Manual')}</span>
+          </td>
+          <td class="py-2.5 px-3">
+            <input type="text" data-id="${item.id}" value="${escapeHtml(item.comment || '')}" placeholder="Click to add a comment..." class="row-comment-input w-full rounded bg-slate-900/70 hover:bg-slate-900 focus:bg-slate-900 border border-transparent focus:border-emerald-500 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition" />
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <button type="button" data-id="${item.id}" class="row-delete-btn text-slate-500 hover:text-rose-400 p-1 transition" title="Delete entry">
+              ✕
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Attach listeners for inline category change, comment edit, and delete
+      tbody.querySelectorAll('.row-cat-select').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          const id = e.target.getAttribute('data-id');
+          const exp = expenses.find(x => x.id === id);
+          if (exp) {
+            exp.category = e.target.value;
+            safeSaveStorage();
+            renderAll();
+            showToast('Category updated');
+          }
+        });
+      });
+
+      tbody.querySelectorAll('.row-comment-input').forEach(inp => {
+        inp.addEventListener('change', (e) => {
+          const id = e.target.getAttribute('data-id');
+          const exp = expenses.find(x => x.id === id);
+          if (exp) {
+            exp.comment = e.target.value.trim();
+            safeSaveStorage();
+            renderAll();
+            showToast('Comment saved locally');
+          }
+        });
+      });
+
+      tbody.querySelectorAll('.row-delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = e.currentTarget.getAttribute('data-id');
+          expenses = expenses.filter(x => x.id !== id);
+          safeSaveStorage();
+          renderAll();
+          showToast('Entry removed');
+        });
+      });
+    }
+
+    function renderChart(sortedCats, total) {
+      const ctx = document.getElementById('categoryChart').getContext('2d');
+      const labels = sortedCats.map(x => x[0]);
+      const values = sortedCats.map(x => x[1]);
+      const colors = labels.map((l, idx) => CATEGORY_COLORS[l] || ['#38bdf8', '#fb7185', '#a3e635', '#c084fc'][idx % 4]);
+
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels.length ? labels : ['No Data'],
+          datasets: [{
+            data: values.length ? values : [1],
+            backgroundColor: values.length ? colors : ['#334155'],
+            borderColor: '#0f172a',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '64%',
+          plugins: {
+            legend: {
+              display: false
+            }
+          }
+        }
+      });
+
+      const legendContainer = document.getElementById('categoryLegendList');
+      legendContainer.innerHTML = '';
+      sortedCats.forEach(([cat, amt], idx) => {
+        const pct = total > 0 ? ((amt / total) * 100).toFixed(1) : '0.0';
+        const color = CATEGORY_COLORS[cat] || ['#38bdf8', '#fb7185', '#a3e635', '#c084fc'][idx % 4];
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/50';
+        row.innerHTML = `
+          <div class="flex items-center gap-2 truncate">
+            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${color}"></span>
+            <span class="text-slate-200 truncate">${escapeHtml(cat)}</span>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-slate-400 text-[11px]">${pct}%</span>
+            <span class="font-semibold text-white">${formatINR(amt)}</span>
+          </div>
+        `;
+        legendContainer.appendChild(row);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function exportToExcel() {
+      const filtered = getFilteredExpenses();
+      if (typeof XLSX === 'undefined') {
+        exportToCsv();
+        return;
+      }
+
+      const ledgerRows = filtered.map(x => ({
+        'Date & Time': (x.date || '').replace('T', ' '),
+        'Merchant / Payee': x.merchant,
+        'Category': x.category,
+        'Amount (INR)': Number(x.amount) || 0,
+        'Payment Mode': x.mode || '',
+        'Capture Source': x.source || '',
+        'Reference ID': x.refId || '',
+        'Comment / Notes': x.comment || '',
+        'Raw Notification Text': x.rawNotification || ''
+      }));
+
+      // Category summary sheet
+      const catMap = {};
+      filtered.forEach(x => {
+        if (!catMap[x.category]) catMap[x.category] = { count: 0, total: 0 };
+        catMap[x.category].count += 1;
+        catMap[x.category].total += (Number(x.amount) || 0);
+      });
+      const summaryRows = Object.entries(catMap).map(([cat, info]) => ({
+        'Category': cat,
+        'Transaction Count': info.count,
+        'Total Spend (INR)': Number(info.total.toFixed(2))
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const wsLedger = XLSX.utils.json_to_sheet(ledgerRows);
+      const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+
+      XLSX.utils.book_append_sheet(wb, wsLedger, 'Expenses_Ledger');
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Category_Summary');
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `Local_Expense_Tracker_${todayStr}.xlsx`);
+      showToast('Exported Excel (.xlsx) workbook!');
+    }
+
+    function exportToCsv() {
+      const filtered = getFilteredExpenses();
+      const headers = ['Date & Time', 'Merchant', 'Category', 'Amount (INR)', 'Payment Mode', 'Source', 'Ref ID', 'Comment'];
+      const rows = filtered.map(x => [
+        (x.date || '').replace('T', ' '),
+        `"${(x.merchant || '').replace(/"/g, '""')}"`,
+        `"${(x.category || '').replace(/"/g, '""')}"`,
+        Number(x.amount) || 0,
+        `"${(x.mode || '').replace(/"/g, '""')}"`,
+        `"${(x.source || '').replace(/"/g, '""')}"`,
+        `"${(x.refId || '').replace(/"/g, '""')}"`,
+        `"${(x.comment || '').replace(/"/g, '""')}"`
+      ]);
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Local_Expense_Tracker_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('Exported CSV file!');
+    }
+
+    function updateLiveNotifPreview() {
+      const raw = document.getElementById('notifInput').value;
+      const box = document.getElementById('parsedPreviewBox');
+      const parsed = parseNotificationText(raw);
+      if (!parsed || !raw.trim()) {
+        box.classList.add('hidden');
+        return;
+      }
+      box.classList.remove('hidden');
+      document.getElementById('prevAmount').textContent = parsed.amount > 0 ? formatINR(parsed.amount) : 'Not detected';
+      document.getElementById('prevMerchant').textContent = parsed.merchant;
+      document.getElementById('prevCategory').textContent = parsed.category;
+      document.getElementById('prevMode').textContent = parsed.refId ? `${parsed.mode} (${parsed.refId})` : parsed.mode;
+    }
+
+    function initApp() {
+      safeLoadStorage();
+      populateCategoryDropdowns();
+
+      // Default datetime in manual form
+      const now = new Date();
+      const tzOffset = now.getTimezoneOffset() * 60000;
+      document.getElementById('manDate').value = new Date(now - tzOffset).toISOString().slice(0, 16);
+
+      // Check URL parameters for automated notification bridge (?auto_notif=...)
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const autoNotif = params.get('auto_notif');
+        if (autoNotif) {
+          const parsed = parseNotificationText(autoNotif);
+          if (parsed && parsed.amount > 0) {
+            expenses.unshift({
+              id: 'exp-' + Date.now(),
+              date: parsed.date,
+              merchant: parsed.merchant,
+              category: parsed.category,
+              amount: parsed.amount,
+              mode: parsed.mode,
+              source: 'Notification',
+              refId: parsed.refId,
+              comment: params.get('comment') || 'Auto-captured via notification link',
+              rawNotification: parsed.rawNotification
+            });
+            safeSaveStorage();
+            showToast(`Auto-logged ${formatINR(parsed.amount)} at ${parsed.merchant}`);
+          }
+        }
+      } catch (e) {
+        // Ignore URL parsing issues
+      }
+
+      // Event Listeners
+      document.getElementById('notifInput').addEventListener('input', updateLiveNotifPreview);
+
+      document.getElementById('simUpiBtn').addEventListener('click', () => {
+        const sample = SAMPLE_NOTIFICATIONS[simIndex % SAMPLE_NOTIFICATIONS.length];
+        simIndex++;
+        document.getElementById('notifInput').value = sample;
+        updateLiveNotifPreview();
+      });
+
+      document.getElementById('simCardBtn').addEventListener('click', () => {
+        const sample = "INR 1,250.00 spent on HDFC Bank Card XX9012 at SHELL PETROL PUMP on 16-Nov-2026 (Ref 88392011).";
+        document.getElementById('notifInput').value = sample;
+        updateLiveNotifPreview();
+      });
+
+      document.getElementById('btnParseAndSave').addEventListener('click', () => {
+        const raw = document.getElementById('notifInput').value;
+        const comment = document.getElementById('notifCommentInput').value.trim();
+        const parsed = parseNotificationText(raw);
+        if (!parsed || parsed.amount <= 0) {
+          showToast('Please paste or simulate a notification with a valid amount');
+          return;
+        }
+        expenses.unshift({
+          id: 'exp-' + Date.now(),
+          date: parsed.date,
+          merchant: parsed.merchant,
+          category: parsed.category,
+          amount: parsed.amount,
+          mode: parsed.mode,
+          source: 'Notification',
+          refId: parsed.refId,
+          comment: comment,
+          rawNotification: parsed.rawNotification
+        });
+        safeSaveStorage();
+        document.getElementById('notifInput').value = '';
+        document.getElementById('notifCommentInput').value = '';
+        updateLiveNotifPreview();
+        renderAll();
+        showToast(`Captured ${formatINR(parsed.amount)} (${parsed.category})`);
+      });
+
+      document.getElementById('manualExpenseForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const amount = parseFloat(document.getElementById('manAmount').value);
+        const merchant = document.getElementById('manMerchant').value.trim();
+        const category = document.getElementById('manCategory').value;
+        const date = document.getElementById('manDate').value;
+        const mode = document.getElementById('manMode').value;
+        const comment = document.getElementById('manComment').value.trim();
+
+        if (!amount || amount <= 0 || !merchant) return;
+
+        expenses.unshift({
+          id: 'exp-' + Date.now(),
+          date,
+          merchant,
+          category,
+          amount,
+          mode,
+          source: 'Manual',
+          refId: '',
+          comment,
+          rawNotification: ''
+        });
+        safeSaveStorage();
+        document.getElementById('manAmount').value = '';
+        document.getElementById('manMerchant').value = '';
+        document.getElementById('manComment').value = '';
+        renderAll();
+        showToast('Manual expense added locally');
+      });
+
+      document.getElementById('btnAddCategory').addEventListener('click', () => {
+        const val = document.getElementById('newCategoryInput').value.trim();
+        if (val && !categories.includes(val)) {
+          categories.push(val);
+          safeSaveStorage();
+          populateCategoryDropdowns();
+          document.getElementById('manCategory').value = val;
+          document.getElementById('newCategoryInput').value = '';
+          showToast(`Added category: ${val}`);
+        }
+      });
+
+      document.getElementById('filterSearch').addEventListener('input', renderAll);
+      document.getElementById('filterCategory').addEventListener('change', renderAll);
+      document.getElementById('filterSource').addEventListener('change', renderAll);
+
+      document.getElementById('btnExportExcel').addEventListener('click', exportToExcel);
+      document.getElementById('btnExportCsv').addEventListener('click', exportToCsv);
+
+      document.getElementById('btnBackupJson').addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify({ expenses, categories }, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `PocketLedger_Local_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast('Local JSON backup downloaded');
+      });
+
+      document.getElementById('importJsonInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const data = JSON.parse(evt.target.result);
+            if (Array.isArray(data.expenses)) {
+              expenses = data.expenses;
+              if (Array.isArray(data.categories)) categories = data.categories;
+              safeSaveStorage();
+              populateCategoryDropdowns();
+              renderAll();
+              showToast('Imported local JSON backup!');
+            }
+          } catch (err) {
+            showToast('Invalid JSON backup file');
+          }
+        };
+        reader.readAsText(file);
+      });
+
+      // Reset Modal
+      document.getElementById('btnClearAll').addEventListener('click', () => {
+        document.getElementById('resetModal').classList.remove('hidden');
+      });
+      document.getElementById('btnCancelReset').addEventListener('click', () => {
+        document.getElementById('resetModal').classList.add('hidden');
+      });
+      document.getElementById('btnConfirmReset').addEventListener('click', () => {
+        expenses = [...INITIAL_EXPENSES];
+        categories = [...DEFAULT_CATEGORIES];
+        safeSaveStorage();
+        populateCategoryDropdowns();
+        renderAll();
+        document.getElementById('resetModal').classList.add('hidden');
+        showToast('Reset to starter sample data');
+      });
+
+      // Tabs
+      const tabTracker = document.getElementById('tabBtnTracker');
+      const tabAndroid = document.getElementById('tabBtnAndroid');
+      const viewTracker = document.getElementById('viewTracker');
+      const viewAndroid = document.getElementById('viewAndroid');
+
+      tabTracker.addEventListener('click', () => {
+        viewTracker.classList.remove('hidden');
+        viewAndroid.classList.add('hidden');
+        tabTracker.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white transition';
+        tabAndroid.className = 'px-3 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white transition';
+      });
+
+      tabAndroid.addEventListener('click', () => {
+        viewTracker.classList.add('hidden');
+        viewAndroid.classList.remove('hidden');
+        tabAndroid.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white transition';
+        tabTracker.className = 'px-3 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white transition';
+      });
+
+      document.getElementById('btnTestUrlParams').addEventListener('click', () => {
+        const testAlert = "Rs. 280.00 debited from A/c XX4821 on 16-11-26 to VPA indikarting@okaxis (UPI Ref 632155599900)";
+        const parsed = parseNotificationText(testAlert);
+        expenses.unshift({
+          id: 'exp-' + Date.now(),
+          date: parsed.date,
+          merchant: parsed.merchant,
+          category: parsed.category,
+          amount: parsed.amount,
+          mode: parsed.mode,
+          source: 'Notification',
+          refId: parsed.refId,
+          comment: 'Simulated Android URL Bridge trigger',
+          rawNotification: parsed.rawNotification
+        });
+        safeSaveStorage();
+        tabTracker.click();
+        renderAll();
+        showToast('Simulated Android Auto-Listener capture!');
+      });
+
+      renderAll();
+    }
+
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
