@@ -20,8 +20,19 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The default package list includes 'tools', which no longer exists
+          # in cmdline-tools 16.0 and makes sdkmanager fail. Install only what
+          # this project needs.
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
-      - name: Install Gradle & Build Debug APK
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # AGP 8.2.0 needs Gradle 8.x; the runner's preinstalled Gradle may be newer.
+          gradle-version: '8.5'
+
+      - name: Build Debug APK
         working-directory: ./android
         run: |
           gradle assembleDebug
