@@ -19,6 +19,12 @@ jobs:
           node tests/core.test.js
           scripts/sync.sh --check
 
+      - name: Check the Android parser matches the app parser
+        run: |
+          mkdir -p /tmp/parity
+          javac -encoding UTF-8 -d /tmp/parity android/app/src/main/java/com/pocketledger/local/MessageParser.java tests/java/ParityTest.java
+          java -cp /tmp/parity ParityTest tests/vectors.tsv
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:

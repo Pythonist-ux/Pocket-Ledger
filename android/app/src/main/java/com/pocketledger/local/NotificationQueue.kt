@@ -2,10 +2,11 @@ package com.pocketledger.local
 
 import android.content.Context
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
- * Holds payment notifications captured while the app UI is closed.
- * The web UI drains it (and decides debit vs credit) as soon as it is open.
+ * Holds payment notifications captured while the app UI is closed, each with the time it arrived.
+ * The web UI drains it as soon as it is open and writes the entries into the ledger.
  */
 object NotificationQueue {
     private const val PREFS = "pocketledger_queue"
@@ -13,10 +14,10 @@ object NotificationQueue {
     private const val MAX_ITEMS = 200
 
     @Synchronized
-    fun add(context: Context, text: String) {
+    fun add(context: Context, text: String, ts: Long) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val items = try { JSONArray(prefs.getString(KEY, "[]")) } catch (e: Exception) { JSONArray() }
-        items.put(text)
+        items.put(JSONObject().put("t", text).put("ts", ts))
         val keep = if (items.length() > MAX_ITEMS) {
             JSONArray().also { out -> for (i in items.length() - MAX_ITEMS until items.length()) out.put(items.get(i)) }
         } else items

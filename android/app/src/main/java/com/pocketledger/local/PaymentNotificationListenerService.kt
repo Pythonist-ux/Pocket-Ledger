@@ -9,8 +9,8 @@ import android.service.notification.StatusBarNotification
 
 /**
  * Watches incoming notifications (bank SMS, UPI apps, card alerts) and queues the ones that look
- * like money going OUT. This is only a cheap pre-filter: the app's core.js makes the final
- * debit / credit decision, so credits, refunds, OTPs and promos never become expenses.
+ * like money going OUT, queues them for the ledger, and shows a "Logged" pop-up.
+ * Parsing uses MessageParser (a tested port of web/core.js), so credits, refunds, OTPs and promos are ignored.
  */
 class PaymentNotificationListenerService : NotificationListenerService() {
 
@@ -33,7 +33,15 @@ class PaymentNotificationListenerService : NotificationListenerService() {
 
         if (!currency.containsMatchIn(combined) || !outgoing.containsMatchIn(combined)) return
 
-        NotificationQueue.add(this, combined)
+        // Same parser as the app (tests/vectors.tsv keeps the two identical): credits, OTPs and promos stop here.
+        val parsed = MessageParser.parse(combined)
+        if (parsed.kind != "debit") return
+
+        val now = System.currentTimeMillis()
+        NotificationQueue.add(this, combined, now)
+        if (!LoggedNotifier.isRepeat(this, parsed, MessageParser.fingerprint(combined), now)) {
+            LoggedNotifier.show(this, parsed, now)
+        }
         sendBroadcast(Intent(ACTION).setPackage(packageName))
     }
 

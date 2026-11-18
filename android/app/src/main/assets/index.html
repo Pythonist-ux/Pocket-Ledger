@@ -91,8 +91,8 @@ svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-widt
 .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mn { font-weight: 600; font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ms { font-size: 12.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rt { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.auto { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 6px; color: var(--acc); background: rgba(75,227,165,.12); }
+.rt { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 44%; }
+.bk { font-style: normal; font-size: 10.5px; font-weight: 600; color: var(--mut); background: rgba(255,255,255,.06); padding: 2px 7px; border-radius: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note { font-size: 12.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .amt { font-weight: 650; font-size: 15.5px; flex: none; }
 .empty { text-align: center; padding: 44px 24px; color: var(--mut); }
@@ -221,6 +221,9 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
       <input class="field" id="fDate" type="datetime-local" />
       <label class="f">Paid with</label>
       <div class="chips wrap" id="fModes"></div>
+      <label class="f">Bank <span style="font-weight:400;color:var(--dim)">(optional)</span></label>
+      <input class="field" id="fBank" list="bankList" placeholder="e.g. HDFC Bank" autocomplete="off" />
+      <datalist id="bankList"></datalist>
       <label class="f">Note <span style="font-weight:400;color:var(--dim)">(optional)</span></label>
       <input class="field" id="fNote" placeholder="Add a note" autocomplete="off" />
       <div class="btns">
@@ -258,6 +261,10 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
       <div class="setrow" id="autoRow" hidden>
         <div><b>Auto-capture</b><small id="autoSmall">Logs debit alerts automatically. Credits are ignored.</small></div>
         <button class="pill" id="autoBtn" type="button">Enable</button>
+      </div>
+      <div class="setrow" id="popRow" hidden>
+        <div><b>Pop-up alerts</b><small id="popSmall">Show a notification when an expense is logged.</small></div>
+        <button class="pill" id="popBtn" type="button">Enable</button>
       </div>
       <div class="setrow"><div><b>Back up data</b><small>Save all expenses as a file</small></div><button class="pill" id="btnBackup" type="button">Back up</button></div>
       <div class="setrow"><div><b>Restore backup</b><small>Merge expenses from a backup file</small></div>
@@ -301,7 +308,7 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
 
   var now0 = new Date();
   var S = { expenses: [], categories: [], y: now0.getFullYear(), m: now0.getMonth() + 1, all: false, cat: 'ALL', q: '',
-            editId: null, fCat: 'Other', fMode: 'UPI', catTouched: false, exp: { fmt: 'xlsx', all: false }, undo: null };
+            editId: null, fCat: 'Other', fMode: 'UPI', fAcct: '', fParsed: null, saving: false, catTouched: false, exp: { fmt: 'xlsx', all: false }, undo: null };
 
   /* ---------------- storage ---------------- */
   function load() {
@@ -391,7 +398,7 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
     var q = S.q.toLowerCase().trim();
     var list = inP.filter(function (e) {
       if (S.cat !== 'ALL' && e.category !== S.cat) return false;
-      if (q && (e.merchant + ' ' + e.category + ' ' + (e.comment || '') + ' ' + (e.refId || '') + ' ' + (e.mode || '')).toLowerCase().indexOf(q) < 0) return false;
+      if (q && (e.merchant + ' ' + e.category + ' ' + (e.comment || '') + ' ' + (e.refId || '') + ' ' + (e.mode || '') + ' ' + (e.bank || '')).toLowerCase().indexOf(q) < 0) return false;
       return true;
     }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
 
@@ -410,7 +417,7 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
         '<span class="mid"><span class="mn">' + esc(e.merchant) + '</span>' +
         '<span class="ms">' + esc(e.category) + (e.mode ? ' · ' + esc(e.mode) : '') + (t ? ' · ' + t : '') + '</span>' +
         (e.comment ? '<span class="note">' + esc(e.comment) + '</span>' : '') + '</span>' +
-        '<span class="rt"><span class="amt num">' + inr(e.amount) + '</span>' + (e.source !== 'Manual' ? '<i class="auto">AUTO</i>' : '') + '</span></button>';
+        '<span class="rt"><span class="amt num">' + inr(e.amount) + '</span>' + (e.bank ? '<i class="bk">' + esc(e.bank) + (e.acct ? ' ••' + esc(e.acct) : '') + '</i>' : '') + '</span></button>';
     });
     $('#list').innerHTML = html;
   }
@@ -451,6 +458,9 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
     $('#fAmount').value = e ? String(e.amount) : ''; $('#fMerchant').value = e ? e.merchant : '';
     $('#fDate').value = e && String(e.date).length >= 16 ? String(e.date).slice(0, 16) : C.nowLocal();
     $('#fNote').value = e ? (e.comment || '') : '';
+    $('#fBank').value = e ? (e.bank || '') : ''; S.fAcct = e ? (e.acct || '') : ''; S.fParsed = null; S.saving = false;
+    var banks = {}; C.BANK_NAMES.forEach(function (b) { banks[b] = 1; }); S.expenses.forEach(function (x) { if (x.bank) banks[x.bank] = 1; });
+    $('#bankList').innerHTML = Object.keys(banks).map(function (b) { return '<option value="' + esc(b) + '">'; }).join('');
     S.fCat = e ? e.category : 'Other'; S.fMode = e ? (e.mode || 'UPI') : 'UPI';
     $('#newCatBox').hidden = true; $('#fDelete').hidden = !e;
     renderEntryChips(); openSheet('sh-entry');
@@ -461,29 +471,40 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
     var merchant = $('#fMerchant').value.trim();
     if (!(amt > 0)) { toast('Enter an amount'); return; }
     if (!merchant) { toast('Enter who you paid'); return; }
-    var date = $('#fDate').value || C.nowLocal(), note = $('#fNote').value.trim();
-    if (S.editId) {
-      var e = S.expenses.filter(function (x) { return x.id === S.editId; })[0];
-      if (e) { e.amount = amt; e.merchant = merchant; e.category = S.fCat; e.mode = S.fMode; e.date = date; e.comment = note; }
+    if (S.saving) return;                       // a double-tap must never save twice
+    S.saving = true;
+    var date = $('#fDate').value || C.nowLocal(), note = $('#fNote').value.trim(), bank = $('#fBank').value.trim();
+    var editing = !!S.editId, id = S.editId;
+    if (editing) {
+      var e = S.expenses.filter(function (x) { return x.id === id; })[0];
+      if (e) {                                  // update the SAME entry in place
+        if (bank !== (e.bank || '')) e.acct = '';
+        e.amount = amt; e.merchant = merchant; e.category = S.fCat; e.mode = S.fMode; e.date = date; e.comment = note; e.bank = bank;
+        var k2 = date.slice(0, 7); if (!S.all && k2 !== curKey()) { S.y = +k2.slice(0, 4); S.m = +k2.slice(5, 7); }
+      }
     } else {
-      S.expenses.unshift({ id: 'exp-' + Date.now() + Math.floor(Math.random() * 1000), date: date, merchant: merchant, category: S.fCat, amount: amt, mode: S.fMode, source: 'Manual', refId: '', comment: note, rawNotification: S.pasted || '' });
+      var p = S.fParsed;
+      S.expenses.unshift({ id: C.newId(), date: date, merchant: merchant, category: S.fCat, amount: amt, mode: S.fMode, bank: bank, acct: bank ? S.fAcct : '',
+        source: 'Manual', refId: p ? p.refId : '', comment: note, rawNotification: p ? p.raw : '', capturedAt: Date.now(), fps: p ? [C.fingerprint(p.raw)] : [] });
       var k = date.slice(0, 7); if (!S.all && k !== curKey()) { S.y = +k.slice(0, 4); S.m = +k.slice(5, 7); }
     }
-    S.pasted = ''; save(); render(); closeSheet('sh-entry'); toast(S.editId ? 'Changes saved' : 'Added ' + inr(amt));
+    S.editId = null; S.fParsed = null;
+    save(); render(); closeSheet('sh-entry'); toast(editing ? 'Changes saved' : 'Added ' + inr(amt));
   }
 
   /* ---------------- auto-capture ---------------- */
-  function ingest(text) {
-    var p = C.parseMessage(text);
-    if (p.kind !== 'debit') return p;                 // credits, OTPs, promos: never logged
-    if (C.isDuplicate(S.expenses, p)) return { kind: 'duplicate' };
-    S.expenses.unshift({ id: 'exp-' + Date.now() + Math.floor(Math.random() * 1000), date: p.date, merchant: p.merchant, category: p.category, amount: p.amount, mode: p.mode, source: 'Auto', refId: p.refId, comment: '', rawNotification: p.raw });
-    save(); render(); toast('Logged ' + inr(p.amount) + ' · ' + p.merchant);
-    return p;
+  function ingest(text, ts) {
+    ts = ts || Date.now();
+    var p = C.parseMessage(text, new Date(ts));            // when the alert ARRIVED, even if the app was closed
+    var r = C.applyParsed(S.expenses, p, ts);
+    if (r.action === 'added') { save(); render(); toast('Logged ' + inr(p.amount) + ' · ' + p.merchant); }
+    else if (r.action === 'merged') { save(); render(); }   // e.g. the bank SMS added the bank / ref to an app alert
+    return { kind: r.action === 'ignored' ? p.kind : (r.action === 'added' ? 'debit' : r.action) };
   }
+  function ingestItem(it) { try { if (typeof it === 'string') ingest(it); else if (it && it.t) ingest(it.t, it.ts); } catch (e) {} }
   function pull() {
     try {
-      if (window.AndroidBridge) JSON.parse(AndroidBridge.drainQueue() || '[]').forEach(function (t) { try { ingest(t); } catch (e) {} });
+      if (window.AndroidBridge) JSON.parse(AndroidBridge.drainQueue() || '[]').forEach(ingestItem);
     } catch (e) {}
     refreshSettings();
   }
@@ -493,6 +514,10 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
     var on = false; try { on = AndroidBridge.isListenerEnabled(); } catch (e) {}
     $('#autoBtn').textContent = on ? 'On' : 'Enable'; $('#autoBtn').className = 'pill' + (on ? '' : ' go');
     $('#autoSmall').textContent = on ? 'Logging debit alerts automatically. Credits are ignored.' : 'Allow notification access so debit alerts are logged for you.';
+    $('#popRow').hidden = false;
+    var can = false; try { can = AndroidBridge.canPostNotifications(); } catch (e) {}
+    $('#popBtn').textContent = can ? 'On' : 'Enable'; $('#popBtn').className = 'pill' + (can ? '' : ' go');
+    $('#popSmall').textContent = can ? 'Shows a pop-up when an expense is logged.' : 'Allow notifications to get a pop-up when an expense is logged.';
   }
 
   /* ---------------- export ---------------- */
@@ -574,11 +599,13 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
   $('#detect').onclick = function () {
     var p = C.parseMessage($('#pasteText').value), st = $('#pasteStatus');
     if (p.kind !== 'debit') { st.className = 'hint bad'; st.textContent = p.reason; return; }
-    $('#fAmount').value = p.amount; $('#fMerchant').value = p.merchant; S.fCat = p.category; S.fMode = p.mode; S.catTouched = true; S.pasted = p.raw;
+    $('#fAmount').value = p.amount; $('#fMerchant').value = p.merchant; $('#fBank').value = p.bank; S.fAcct = p.acct;
+    S.fCat = p.category; S.fMode = p.mode; S.catTouched = true; S.fParsed = p;
     if (S.categories.indexOf(p.category) < 0) S.categories.push(p.category);
     renderEntryChips(); st.className = 'hint ok'; st.textContent = 'Found ' + inr(p.amount) + ' · ' + p.merchant;
   };
   $('#autoBtn').onclick = function () { try { AndroidBridge.openNotificationAccess(); } catch (e) {} };
+  $('#popBtn').onclick = function () { try { AndroidBridge.requestNotificationPermission(); } catch (e) {} };
   $('#btnBackup').onclick = function () {
     deliver('PocketLedger_backup_' + today() + '.json', 'application/json', JSON.stringify({ app: 'PocketLedger', expenses: S.expenses, categories: S.categories }, null, 2), 'save');
   };
@@ -607,7 +634,7 @@ textarea.field { height: auto; padding: 12px 16px; resize: none; }
   window.PL = {
     pull: pull,
     ingest: ingest,
-    ingestMany: function (arr) { (arr || []).forEach(function (t) { try { ingest(t); } catch (e) {} }); },
+    ingestMany: function (arr) { (arr || []).forEach(ingestItem); },
     back: function () { if (!stack.length) return false; closeSheet(stack[stack.length - 1]); return true; }
   };
 

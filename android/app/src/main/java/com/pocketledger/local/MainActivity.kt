@@ -186,6 +186,19 @@ class MainActivity : AppCompatActivity() {
         controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 
+    private val notifPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { pullQueue() }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && !LoggedNotifier.canPost(this)) {
+            notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else if (!LoggedNotifier.canPost(this)) {
+            try {
+                startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+            } catch (e: Exception) { }
+        }
+    }
+
     private fun pullQueue() {
         webView.evaluateJavascript("window.PL && PL.pull()", null)
     }
@@ -244,6 +257,12 @@ class MainActivity : AppCompatActivity() {
     inner class Bridge {
         @JavascriptInterface
         fun drainQueue(): String = NotificationQueue.drain(applicationContext)
+
+        @JavascriptInterface
+        fun canPostNotifications(): Boolean = LoggedNotifier.canPost(applicationContext)
+
+        @JavascriptInterface
+        fun requestNotificationPermission() { runOnUiThread { this@MainActivity.requestNotificationPermission() } }
 
         @JavascriptInterface
         fun isListenerEnabled(): Boolean = this@MainActivity.isListenerEnabled()
