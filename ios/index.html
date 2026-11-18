@@ -1,1149 +1,623 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Local Expense & Notification Tracker</title>
-  <meta name="theme-color" content="#0f172a" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="PocketLedger" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <link rel="manifest" id="pwaManifestLink" href="data:application/manifest+json,%7B%22name%22%3A%22PocketLedger%20Local%22%2C%22short_name%22%3A%22PocketLedger%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f172a%22%2C%22theme_color%22%3A%22%2310b981%22%7D" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>PocketLedger</title>
+<meta name="theme-color" content="#0A0B0F" />
+<meta name="color-scheme" content="dark" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="PocketLedger" />
+<style>
+:root {
+  --bg: #0A0B0F; --s1: #11131A; --s2: #171A22; --s3: #1F232D;
+  --line: rgba(255,255,255,.07); --line2: rgba(255,255,255,.12);
+  --tx: #F4F6F8; --mut: #8D95A3; --dim: #5D6472;
+  --acc: #4BE3A5; --acc2: #22C3E6; --red: #FF6B7A; --amber: #FFB347;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--tx); overflow: hidden; overscroll-behavior: none; }
+body {
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", Roboto, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; touch-action: manipulation;
+}
+input, textarea { -webkit-user-select: text; user-select: text; font: inherit; color: inherit; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.num { font-variant-numeric: tabular-nums; }
 
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    body {
-      font-family: 'Inter', sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
-    }
-    .glass-card {
-      background: rgba(30, 41, 59, 0.85);
-      border: 1px solid rgba(148, 163, 184, 0.15);
-      backdrop-filter: blur(8px);
-    }
-    /* Custom scrollbar */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #0f172a;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #334155;
-      border-radius: 3px;
-    }
-  </style>
+/* ---------- Splash ---------- */
+#splash { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; transition: opacity .35s ease, visibility .35s; }
+#splash.hide { opacity: 0; visibility: hidden; }
+#splash svg { width: 104px; height: 104px; border-radius: 28px; box-shadow: 0 0 70px rgba(75,227,165,.22); animation: pop .75s cubic-bezier(.2,.9,.3,1.15) both; }
+#splash .name { font-size: 21px; font-weight: 600; letter-spacing: .03em; opacity: 0; animation: fade .6s .3s both; }
+#splash .name b { background: linear-gradient(90deg, var(--acc), var(--acc2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 700; }
+@keyframes pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+@keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Layout ---------- */
+#app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+.top { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--sat) + 10px) 14px 8px 8px; }
+.period { display: flex; align-items: center; gap: 2px; }
+.icon { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; color: var(--mut); transition: background .15s, color .15s, opacity .15s; }
+.icon:active { background: var(--s2); color: var(--tx); }
+.icon[disabled] { opacity: .25; pointer-events: none; }
+.plabel { font-size: 17px; font-weight: 650; letter-spacing: -.01em; min-width: 140px; text-align: center; }
+.acts { display: flex; gap: 2px; }
+#scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px 0; scrollbar-width: none; }
+#scroll::-webkit-scrollbar { display: none; }
+
+/* ---------- Hero ---------- */
+.hero { position: relative; overflow: hidden; border-radius: 26px; padding: 20px 18px 16px; background: linear-gradient(160deg, #161A23 0%, #0F1217 70%); border: 1px solid var(--line); }
+.hero::before { content: ""; position: absolute; width: 260px; height: 260px; right: -90px; top: -120px; background: radial-gradient(closest-side, rgba(75,227,165,.20), transparent); pointer-events: none; }
+.hero-top { display: flex; align-items: center; justify-content: space-between; position: relative; }
+.eyebrow { font-size: 13px; color: var(--mut); font-weight: 500; }
+.seg { display: inline-flex; padding: 3px; border-radius: 12px; background: rgba(255,255,255,.05); }
+.seg button { padding: 5px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 600; color: var(--mut); transition: background .15s, color .15s; }
+.seg button.on { background: var(--s3); color: var(--tx); box-shadow: 0 1px 0 rgba(255,255,255,.06) inset; }
+.total { font-size: 44px; font-weight: 700; letter-spacing: -.035em; margin: 10px 0 2px; position: relative; line-height: 1.1; }
+.sub { font-size: 13px; color: var(--mut); position: relative; }
+.delta { font-weight: 650; }
+.delta.up { color: var(--red); } .delta.down { color: var(--acc); }
+.bar { display: flex; gap: 3px; height: 10px; margin: 18px 0 14px; position: relative; }
+.bar i { display: block; border-radius: 5px; min-width: 6px; }
+.crow { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 6px; margin: 0 -6px; border-radius: 12px; text-align: left; font-size: 13.5px; position: relative; transition: background .15s; }
+.crow:active, .crow.on { background: rgba(255,255,255,.06); }
+.crow .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.crow .cn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow .pc { color: var(--dim); font-size: 12.5px; }
+.crow .ca { font-weight: 600; text-align: right; flex: none; }
+.crow .pc { flex: none; min-width: 30px; text-align: right; }
+
+/* ---------- Toolbar & list ---------- */
+.search { display: flex; align-items: center; gap: 8px; margin: 16px 0 10px; padding: 0 14px; height: 44px; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); color: var(--dim); }
+.search svg { width: 18px; height: 18px; flex: none; }
+.search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; font-size: 15px; color: var(--tx); }
+.search input::placeholder { color: var(--dim); }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips.wrap { flex-wrap: wrap; overflow: visible; padding-bottom: 2px; }
+.chip { flex: none; padding: 8px 14px; border-radius: 999px; font-size: 13.5px; font-weight: 550; color: var(--mut); background: var(--s1); border: 1px solid var(--line); white-space: nowrap; transition: all .15s; }
+.chip.on { color: #04140D; background: var(--acc); border-color: var(--acc); }
+.chip.add { color: var(--acc); border-style: dashed; border-color: rgba(75,227,165,.4); background: transparent; }
+.day { font-size: 12.5px; font-weight: 650; color: var(--dim); letter-spacing: .04em; text-transform: uppercase; margin: 14px 4px 6px; display: flex; justify-content: space-between; }
+.row { display: flex; align-items: center; gap: 13px; width: 100%; padding: 11px 6px; margin: 0 -6px; border-radius: 16px; text-align: left; transition: background .15s; animation: fade .3s both; }
+.row:active { background: var(--s1); }
+.av { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; font-weight: 700; font-size: 17px; flex: none; }
+.mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mn { font-weight: 600; font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms { font-size: 12.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.auto { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 6px; color: var(--acc); background: rgba(75,227,165,.12); }
+.note { font-size: 12.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.amt { font-weight: 650; font-size: 15.5px; flex: none; }
+.empty { text-align: center; padding: 44px 24px; color: var(--mut); }
+.empty .big { width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 20px; display: grid; place-items: center; background: var(--s1); color: var(--acc); border: 1px solid var(--line); }
+.empty b { display: block; color: var(--tx); font-size: 17px; margin-bottom: 4px; }
+
+#fab { position: fixed; right: 20px; bottom: calc(var(--sab) + 22px); width: 62px; height: 62px; border-radius: 22px; display: grid; place-items: center; color: #04140D; background: linear-gradient(135deg, #6BF5B8, #2FDDA0 55%, #22C3E6); box-shadow: 0 10px 30px rgba(47,221,160,.35), 0 0 0 1px rgba(255,255,255,.12) inset; transition: transform .15s; z-index: 5; }
+#fab:active { transform: scale(.92); }
+#fab svg { width: 28px; height: 28px; stroke-width: 2.4; }
+
+/* ---------- Sheets ---------- */
+.sheet-wrap { position: fixed; inset: 0; z-index: 50; visibility: hidden; }
+.sheet-wrap.open { visibility: visible; }
+.backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.6); opacity: 0; transition: opacity .25s; }
+.sheet-wrap.open .backdrop { opacity: 1; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 92%; display: flex; flex-direction: column; background: var(--s1); border-radius: 28px 28px 0 0; border-top: 1px solid var(--line2); transform: translateY(100%); transition: transform .3s cubic-bezier(.2,.8,.2,1); padding-bottom: var(--sab); }
+.sheet-wrap.open .sheet { transform: none; }
+.grab { width: 38px; height: 4px; border-radius: 2px; background: var(--s3); margin: 9px auto 0; flex: none; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 4px 22px; flex: none; }
+.sheet-head h2 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.01em; }
+.sheet-body { overflow-y: auto; padding: 8px 20px 20px; -webkit-overflow-scrolling: touch; }
+label.f { display: block; font-size: 12.5px; font-weight: 600; color: var(--mut); margin: 18px 0 8px; }
+.field { width: 100%; height: 50px; padding: 0 16px; border-radius: 15px; background: var(--s2); border: 1px solid var(--line); outline: 0; font-size: 16px; color: var(--tx); transition: border-color .15s; color-scheme: dark; }
+.field:focus { border-color: rgba(75,227,165,.55); }
+textarea.field { height: auto; padding: 12px 16px; resize: none; }
+.amount { display: flex; align-items: baseline; gap: 6px; justify-content: center; padding: 14px 0 4px; }
+.amount span { font-size: 28px; color: var(--mut); font-weight: 600; }
+.amount input { width: 60%; max-width: 240px; background: none; border: 0; outline: 0; font-size: 48px; font-weight: 700; letter-spacing: -.03em; color: var(--tx); text-align: left; font-variant-numeric: tabular-nums; }
+.amount input::placeholder { color: var(--s3); }
+.btn { width: 100%; height: 52px; border-radius: 16px; font-weight: 650; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform .12s, opacity .15s; }
+.btn:active { transform: scale(.98); opacity: .85; }
+.btn.primary { color: #04140D; background: linear-gradient(135deg, #6BF5B8, #2FDDA0 60%, #22C3E6); }
+.btn.ghost { background: var(--s2); border: 1px solid var(--line); }
+.btn.danger { background: rgba(255,107,122,.12); color: var(--red); }
+.btns { display: flex; gap: 10px; margin-top: 22px; }
+.link { color: var(--acc); font-size: 13.5px; font-weight: 600; padding: 6px 0; }
+.hint { font-size: 12.5px; color: var(--mut); }
+.hint.ok { color: var(--acc); } .hint.bad { color: var(--amber); }
+.setrow { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.setrow:last-child { border-bottom: 0; }
+.setrow b { display: block; font-weight: 600; font-size: 15px; }
+.setrow small { display: block; color: var(--mut); font-size: 12.5px; margin-top: 2px; }
+.pill { flex: none; padding: 8px 14px; border-radius: 12px; font-size: 13px; font-weight: 650; background: var(--s3); }
+.pill.go { background: var(--acc); color: #04140D; }
+.pill.red { color: var(--red); background: rgba(255,107,122,.12); }
+.seg.big { display: flex; width: 100%; padding: 4px; border-radius: 14px; background: var(--s2); }
+.seg.big button { flex: 1; padding: 11px 0; font-size: 14px; border-radius: 11px; }
+.sumline { text-align: center; color: var(--mut); font-size: 13.5px; margin-top: 18px; }
+.sumline b { color: var(--tx); }
+
+#toast { position: fixed; left: 16px; right: 16px; top: calc(var(--sat) + 12px); z-index: 80; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-radius: 16px; background: #232834; border: 1px solid var(--line2); box-shadow: 0 12px 40px rgba(0,0,0,.5); font-size: 14px; font-weight: 550; opacity: 0; transform: translateY(-14px); pointer-events: none; transition: all .25s; }
+#toast.show { opacity: 1; transform: none; pointer-events: auto; }
+#toast button { color: var(--acc); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+</style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body>
 
-  <!-- Top Header -->
-  <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-30">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-lg">
-          ₹
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-lg font-bold tracking-tight text-white">PocketLedger Local</h1>
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 100% On-Device
-            </span>
-          </div>
-          <p class="text-xs text-slate-400">Auto-parse bank & UPI notifications, categorize, comment, and export to Excel</p>
-        </div>
-      </div>
+<!-- Splash (shown for 1 second) -->
+<div id="splash">
+  <svg viewBox="0 0 1024 1024" aria-hidden="true">
+    <defs>
+      <linearGradient id="sbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#151A23"/><stop offset="1" stop-color="#07080B"/></linearGradient>
+      <linearGradient id="smint" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6BF5B8"/><stop offset=".55" stop-color="#2FDDA0"/><stop offset="1" stop-color="#22C3E6"/></linearGradient>
+      <radialGradient id="sglow" cx=".5" cy=".45" r=".55"><stop offset="0" stop-color="#2FDDA0" stop-opacity=".28"/><stop offset="1" stop-color="#2FDDA0" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect width="1024" height="1024" fill="url(#sbg)"/><rect width="1024" height="1024" fill="url(#sglow)"/>
+    <path d="M330 320H700M330 440H700M330 320H500C650 320 650 560 500 560H330L690 800" fill="none" stroke="url(#smint)" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div class="name">Pocket<b>Ledger</b></div>
+</div>
 
-      <!-- Navigation & Primary Actions -->
-      <div class="flex flex-wrap items-center gap-2">
-        <div class="inline-flex rounded-lg bg-slate-800 p-1 border border-slate-700">
-          <button id="tabBtnTracker" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white transition">
-            Expense Tracker
-          </button>
-          <button id="tabBtnAndroid" class="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white transition">
-            Android APK & iOS Setup
-          </button>
-        </div>
-
-        <button id="btnExportExcel" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition shadow-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Export Excel (.xlsx)
-        </button>
-
-        <button id="btnExportCsv" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-          Export CSV
-        </button>
-      </div>
+<div id="app">
+  <header class="top">
+    <div class="period">
+      <button class="icon" id="prev" aria-label="Previous month"><svg class="i" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <div class="plabel" id="plabel"></div>
+      <button class="icon" id="next" aria-label="Next month"><svg class="i" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="acts">
+      <button class="icon" id="btnExport" aria-label="Export"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></button>
+      <button class="icon" id="btnSettings" aria-label="Settings"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
     </div>
   </header>
 
-  <!-- Main Content -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-
-    <!-- VIEW 1: EXPENSE TRACKER -->
-    <div id="viewTracker" class="space-y-6">
-
-      <!-- KPI Summary Row -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="glass-card rounded-xl p-4">
-          <div class="text-xs font-medium text-slate-400">Total Filtered Spend</div>
-          <div id="kpiTotalSpend" class="text-2xl font-bold text-white mt-1">₹0.00</div>
-          <div id="kpiTxCount" class="text-xs text-emerald-400 mt-1">0 transactions recorded</div>
-        </div>
-        <div class="glass-card rounded-xl p-4">
-          <div class="text-xs font-medium text-slate-400">This Month's Spend</div>
-          <div id="kpiMonthSpend" class="text-2xl font-bold text-white mt-1">₹0.00</div>
-          <div id="kpiAvgSpend" class="text-xs text-slate-400 mt-1">Avg ₹0 / purchase</div>
-        </div>
-        <div class="glass-card rounded-xl p-4">
-          <div class="text-xs font-medium text-slate-400">Top Category</div>
-          <div id="kpiTopCategory" class="text-xl font-bold text-amber-300 mt-1 truncate">—</div>
-          <div id="kpiTopCategoryAmt" class="text-xs text-slate-400 mt-1">₹0.00</div>
-        </div>
-        <div class="glass-card rounded-xl p-4">
-          <div class="text-xs font-medium text-slate-400">Comments & Storage Status</div>
-          <div id="kpiCommentCount" class="text-xl font-bold text-sky-300 mt-1">0 with notes</div>
-          <div class="flex items-center justify-between mt-1">
-            <span id="storageBadge" class="text-xs text-emerald-400">Saved in LocalStorage</span>
-            <button id="btnBackupJson" class="text-xs underline text-slate-300 hover:text-white">Backup JSON</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Notification Parser & Manual Add Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-        <!-- Left 7 cols: Smart Notification / SMS Auto-Parser + Manual Form -->
-        <div class="lg:col-span-7 space-y-6">
-
-          <!-- Smart Notification & SMS Auto-Parser -->
-          <div class="glass-card rounded-xl p-5 border-l-4 border-l-emerald-500">
-            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div>
-                <h2 class="text-sm font-bold text-white flex items-center gap-2">
-                  <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                  Smart Purchase Notification & SMS Listener
-                </h2>
-                <p class="text-xs text-slate-400 mt-0.5">
-                  Paste or simulate any UPI, Google Pay, bank alert, or card notification to auto-extract amount, merchant, category, and reference ID.
-                </p>
-              </div>
-              <div class="flex flex-wrap gap-1.5">
-                <button type="button" id="simUpiBtn" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition">
-                  + Simulate UPI Alert
-                </button>
-                <button type="button" id="simCardBtn" class="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition">
-                  + Simulate Card Alert
-                </button>
-              </div>
-            </div>
-
-            <div class="space-y-3">
-              <textarea id="notifInput" rows="3" placeholder="Example: Rs. 450.00 debited from A/c XX4821 on 16-11-26 to VPA rapido@axis (UPI Ref 632189401211). Or click '+ Simulate UPI Alert' above..." class="w-full rounded-lg bg-slate-900/90 border border-slate-700 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"></textarea>
-
-              <!-- Live Parsed Preview Pill Bar -->
-              <div id="parsedPreviewBox" class="hidden rounded-lg bg-slate-900/80 border border-slate-700/80 p-3 text-xs space-y-2">
-                <div class="flex items-center justify-between text-slate-400">
-                  <span class="font-semibold text-emerald-400">Detected from Notification:</span>
-                  <span id="previewConfidence" class="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300">Ready to save</span>
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                  <div class="bg-slate-800/80 p-2 rounded">
-                    <span class="text-[10px] text-slate-400 block">Amount</span>
-                    <span id="prevAmount" class="font-bold text-white">—</span>
-                  </div>
-                  <div class="bg-slate-800/80 p-2 rounded">
-                    <span class="text-[10px] text-slate-400 block">Merchant / Payee</span>
-                    <span id="prevMerchant" class="font-semibold text-white truncate block">—</span>
-                  </div>
-                  <div class="bg-slate-800/80 p-2 rounded">
-                    <span class="text-[10px] text-slate-400 block">Auto-Category</span>
-                    <span id="prevCategory" class="font-semibold text-amber-300 truncate block">—</span>
-                  </div>
-                  <div class="bg-slate-800/80 p-2 rounded">
-                    <span class="text-[10px] text-slate-400 block">Mode / Ref</span>
-                    <span id="prevMode" class="font-medium text-slate-300 truncate block">—</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="flex flex-col sm:flex-row gap-2">
-                <input id="notifCommentInput" type="text" placeholder="Add an optional comment before saving (e.g., 'Office commute', 'Split with friend')..." class="flex-1 rounded-lg bg-slate-900/90 border border-slate-700 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500" />
-                <button type="button" id="btnParseAndSave" class="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition whitespace-nowrap">
-                  Capture & Save Expense
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Manual / Detailed Expense Entry Form -->
-          <div class="glass-card rounded-xl p-5">
-            <h2 class="text-sm font-bold text-white mb-3">Add or Customize Expense Manually</h2>
-            <form id="manualExpenseForm" class="grid grid-cols-1 sm:grid-cols-6 gap-3">
-              <div class="sm:col-span-2">
-                <label class="block text-[11px] font-medium text-slate-400 mb-1">Amount (₹) *</label>
-                <input id="manAmount" type="number" step="0.01" min="0.01" required placeholder="0.00" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
-              </div>
-              <div class="sm:col-span-2">
-                <label class="block text-[11px] font-medium text-slate-400 mb-1">Merchant / Payee *</label>
-                <input id="manMerchant" type="text" required placeholder="e.g., Amazon, Rapido, Zomato" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
-              </div>
-              <div class="sm:col-span-2">
-                <label class="block text-[11px] font-medium text-slate-400 mb-1">Category *</label>
-                <select id="manCategory" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"></select>
-              </div>
-
-              <div class="sm:col-span-2">
-                <label class="block text-[11px] font-medium text-slate-400 mb-1">Date & Time *</label>
-                <input id="manDate" type="datetime-local" required class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
-              </div>
-              <div class="sm:col-span-2">
-                <label class="block text-[11px] font-medium text-slate-400 mb-1">Payment Mode</label>
-                <select id="manMode" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
-                  <option value="UPI / Google Pay">UPI / Google Pay</option>
-                  <option value="Credit Card">Credit Card</option>
-                  <option value="Debit Card">Debit Card</option>
-                  <option value="NetBanking">NetBanking</option>
-                  <option value="Cash">Cash</option>
-                </select>
-              </div>
-              <div class="sm:col-span-2">
-                <label class="block text-[11px] font-medium text-slate-400 mb-1">Add New Category</label>
-                <div class="flex gap-1">
-                  <input id="newCategoryInput" type="text" placeholder="Custom category..." class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
-                  <button type="button" id="btnAddCategory" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-400 border border-slate-700">+</button>
-                </div>
-              </div>
-
-              <div class="sm:col-span-5">
-                <label class="block text-[11px] font-medium text-slate-400 mb-1">Comment / Notes</label>
-                <input id="manComment" type="text" placeholder="Add context, bill details, warranty note, or reimbursement tag..." class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" />
-              </div>
-              <div class="sm:col-span-1 flex items-end">
-                <button type="submit" class="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition">
-                  Add Entry
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <!-- Right 5 cols: Category Chart & Breakdown -->
-        <div class="lg:col-span-5 glass-card rounded-xl p-5 flex flex-col justify-between">
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-sm font-bold text-white">Category Spending Breakdown</h2>
-              <span class="text-xs text-slate-400">Live visual summary</span>
-            </div>
-            <div class="relative h-64 w-full">
-              <canvas id="categoryChart"></canvas>
-            </div>
-          </div>
-
-          <div id="categoryLegendList" class="mt-4 pt-3 border-t border-slate-800 space-y-1.5 max-h-44 overflow-y-auto text-xs">
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Filter Bar & Expense Ledger Table -->
-      <div class="glass-card rounded-xl p-5 space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 class="text-sm font-bold text-white">Purchase History & Inline Comments</h2>
-            <p class="text-xs text-slate-400">Click any category or comment cell in the table below to update it immediately.</p>
-          </div>
-
-          <!-- Filters -->
-          <div class="flex flex-wrap items-center gap-2">
-            <input id="filterSearch" type="text" placeholder="Search merchant, comment, ref..." class="rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500" />
-            <select id="filterCategory" class="rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500">
-              <option value="ALL">All Categories</option>
-            </select>
-            <select id="filterSource" class="rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500">
-              <option value="ALL">All Sources</option>
-              <option value="Notification">Notification Auto-Captured</option>
-              <option value="Manual">Manual Entry</option>
-            </select>
-            <label class="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700">
-              <span>Import JSON</span>
-              <input id="importJsonInput" type="file" accept=".json" class="hidden" />
-            </label>
-            <button id="btnClearAll" type="button" class="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border border-rose-800/50 text-xs transition">
-              Reset Data
-            </button>
-          </div>
-        </div>
-
-        <!-- Responsive Table -->
-        <div class="overflow-x-auto rounded-lg border border-slate-800">
-          <table class="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr class="bg-slate-900/90 text-slate-400 border-b border-slate-800">
-                <th class="py-2.5 px-3 font-semibold">Date & Time</th>
-                <th class="py-2.5 px-3 font-semibold">Merchant / Payee</th>
-                <th class="py-2.5 px-3 font-semibold">Category</th>
-                <th class="py-2.5 px-3 font-semibold text-right">Amount (₹)</th>
-                <th class="py-2.5 px-3 font-semibold">Mode & Source</th>
-                <th class="py-2.5 px-3 font-semibold min-w-[220px]">Comment / Note (Editable)</th>
-                <th class="py-2.5 px-3 font-semibold text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="expenseTableBody" class="divide-y divide-slate-800/70">
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- VIEW 2: ANDROID AUTO-LISTENER BRIDGE GUIDE -->
-    <div id="viewAndroid" class="hidden space-y-6">
-      <div class="glass-card rounded-xl p-6 space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Real-Time Mobile Notification Capture</span>
-            <h2 class="text-lg font-bold text-white mt-0.5">How to Auto-Capture Every Phone Payment Notification Into This App</h2>
-          </div>
-          <button id="btnTestUrlParams" class="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition">
-            Test URL Auto-Capture Now
-          </button>
-        </div>
-
-        <p class="text-xs text-slate-300 leading-relaxed">
-          Because mobile operating systems (Android and iOS) sandbox browser apps from reading system-wide notifications in the background without permission, this app includes a built-in <strong>URL Query Bridge (`?auto_notif=...`)</strong>. Whenever your phone receives a Google Pay, PhonePe, Paytm, or bank SMS notification, a tiny local automation rule on your phone can open this app with the notification text—and the app will automatically parse, categorize, and save it to your local storage.
-        </p>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div class="text-xs font-bold text-emerald-400">Step 1: Trigger on Payment Alert</div>
-            <p class="text-xs text-slate-400">
-              In <strong>MacroDroid</strong> (free on Android) or <strong>Tasker</strong>, add a Trigger for <em>Notification Received</em> from Google Pay, PhonePe, Paytm, or Messages containing keywords like <code>debited</code>, <code>paid</code>, or <code>spent</code>.
-            </p>
-          </div>
-          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div class="text-xs font-bold text-sky-400">Step 2: Pass Notification to Local URL</div>
-            <p class="text-xs text-slate-400">
-              Add an Action: <em>Open Website / HTTP GET</em> and pass the notification body variable into the <code>?auto_notif=</code> parameter of your saved app file.
-            </p>
-          </div>
-          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div class="text-xs font-bold text-amber-400">Step 3: Add Comment & Export to Excel</div>
-            <p class="text-xs text-slate-400">
-              The purchase is immediately logged locally in your browser with its auto-detected category. Add your comment anytime and click <strong>Export Excel (.xlsx)</strong>.
-            </p>
-          </div>
-        </div>
-
-        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-300">Supported Notification & SMS Formats (Built-in Regex Engine)</span>
-            <span class="text-[11px] text-emerald-400">Tested with Indian Banks & UPI Apps</span>
-          </div>
-          <ul class="text-xs text-slate-400 list-disc list-inside space-y-1">
-            <li><code>Rs. 340.00 debited from A/c XX1234 on 16-11-26 to VPA swiggy@icici (UPI Ref 632011223344)</code></li>
-            <li><code>Paid ₹185 to Rapido Bike Taxi using Google Pay. UPI transaction ID: 631998877665</code></li>
-            <li><code>INR 1,299.00 spent on HDFC Bank Card XX8821 at AMAZON INDIA on 16-Nov-2026</code></li>
-            <li><code>Your A/c XXXXX9012 is debited by Rs 650.00 towards INDIKARTING; Ref No 4123987123</code></li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
+  <main id="scroll">
+    <section class="hero" id="hero"></section>
+    <label class="search">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+      <input id="q" type="search" placeholder="Search expenses" autocomplete="off" />
+    </label>
+    <div class="chips" id="chips"></div>
+    <section id="list"></section>
+    <div style="height:120px"></div>
   </main>
 
-  <!-- Toast Notification -->
-  <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-4 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-semibold shadow-lg transition">
-    Saved!
-  </div>
+  <button id="fab" aria-label="Add expense"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+</div>
 
-  <!-- Confirmation Modal for Reset -->
-  <div id="resetModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 flex items-center justify-center p-4">
-    <div class="glass-card max-w-sm w-full rounded-xl p-5 space-y-4 border border-slate-700">
-      <h3 class="text-sm font-bold text-white">Reset All Stored Expenses?</h3>
-      <p class="text-xs text-slate-300">
-        This will clear your current local expense list and restore the starter sample transactions. Make sure you have exported to Excel first if needed.
-      </p>
-      <div class="flex justify-end gap-2">
-        <button id="btnCancelReset" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-medium">Cancel</button>
-        <button id="btnConfirmReset" class="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold">Yes, Reset</button>
+<!-- Add / edit expense -->
+<div class="sheet-wrap" id="sh-entry" aria-hidden="true">
+  <div class="backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2 id="entryTitle">New expense</h2><button class="icon" data-close aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheet-body">
+      <div id="pasteWrap">
+        <button class="link" id="togglePaste" type="button">Paste a bank SMS instead</button>
+        <div id="pasteBox" hidden>
+          <textarea class="field" id="pasteText" rows="3" placeholder="Rs. 450 debited from A/c XX4821 to VPA rapido@axis (UPI Ref 632189401211)"></textarea>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+            <button class="pill go" id="detect" type="button">Detect</button><span class="hint" id="pasteStatus"></span>
+          </div>
+        </div>
+      </div>
+      <div class="amount"><span>₹</span><input id="fAmount" inputmode="decimal" placeholder="0" autocomplete="off" /></div>
+      <label class="f">Paid to</label>
+      <input class="field" id="fMerchant" placeholder="e.g. Swiggy, Rapido" autocomplete="off" />
+      <label class="f">Category</label>
+      <div class="chips wrap" id="fCats"></div>
+      <div id="newCatBox" hidden style="margin-top:10px;display:flex;gap:8px">
+        <input class="field" id="newCat" placeholder="New category name" style="height:44px" />
+        <button class="pill go" id="newCatAdd" type="button">Add</button>
+      </div>
+      <label class="f">When</label>
+      <input class="field" id="fDate" type="datetime-local" />
+      <label class="f">Paid with</label>
+      <div class="chips wrap" id="fModes"></div>
+      <label class="f">Note <span style="font-weight:400;color:var(--dim)">(optional)</span></label>
+      <input class="field" id="fNote" placeholder="Add a note" autocomplete="off" />
+      <div class="btns">
+        <button class="btn danger" id="fDelete" type="button" hidden style="width:96px">Delete</button>
+        <button class="btn primary" id="fSave" type="button">Save expense</button>
       </div>
     </div>
   </div>
+</div>
 
-  <script>
-    const STORAGE_KEY = 'pocketledger_local_expenses_v1';
-    const CAT_STORAGE_KEY = 'pocketledger_local_categories_v1';
+<!-- Export -->
+<div class="sheet-wrap" id="sh-export" aria-hidden="true">
+  <div class="backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2>Export</h2><button class="icon" data-close aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheet-body">
+      <label class="f" style="margin-top:6px">Format</label>
+      <div class="seg big" id="expFmt"><button data-v="xlsx" class="on">Excel (.xlsx)</button><button data-v="csv">CSV</button></div>
+      <label class="f">Range</label>
+      <div class="seg big" id="expRange"><button data-v="month" class="on" id="expMonthBtn">This month</button><button data-v="all">All time</button></div>
+      <div class="sumline" id="expSum"></div>
+      <div class="btns" id="expBtns" style="flex-direction:column"></div>
+    </div>
+  </div>
+</div>
 
-    const DEFAULT_CATEGORIES = [
-      'Food & Dining',
-      'Commute & Fuel',
-      'Shopping & E-Commerce',
-      'Groceries',
-      'Sports & Recreation',
-      'Bills & Subscriptions',
-      'Personal Care',
-      'Health & Fitness',
-      'Other'
-    ];
+<!-- Settings -->
+<div class="sheet-wrap" id="sh-settings" aria-hidden="true">
+  <div class="backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2>Settings</h2><button class="icon" data-close aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheet-body">
+      <div class="setrow" id="autoRow" hidden>
+        <div><b>Auto-capture</b><small id="autoSmall">Logs debit alerts automatically. Credits are ignored.</small></div>
+        <button class="pill" id="autoBtn" type="button">Enable</button>
+      </div>
+      <div class="setrow"><div><b>Back up data</b><small>Save all expenses as a file</small></div><button class="pill" id="btnBackup" type="button">Back up</button></div>
+      <div class="setrow"><div><b>Restore backup</b><small>Merge expenses from a backup file</small></div>
+        <label class="pill" style="cursor:pointer">Choose file<input id="restoreInput" type="file" accept=".json,application/json" hidden /></label></div>
+      <div class="setrow"><div><b>Delete all data</b><small>Removes every expense from this device</small></div><button class="pill red" id="btnWipe" type="button">Delete</button></div>
+    </div>
+  </div>
+</div>
 
-    const CATEGORY_COLORS = {
-      'Food & Dining': '#f59e0b',
-      'Commute & Fuel': '#10b981',
-      'Shopping & E-Commerce': '#6366f1',
-      'Groceries': '#84cc16',
-      'Sports & Recreation': '#06b6d4',
-      'Bills & Subscriptions': '#ec4899',
-      'Personal Care': '#a855f7',
-      'Health & Fitness': '#14b8a6',
-      'Other': '#94a3b8'
+<!-- Confirm -->
+<div class="sheet-wrap" id="sh-confirm" aria-hidden="true">
+  <div class="backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2 id="cTitle">Are you sure?</h2></div>
+    <div class="sheet-body">
+      <p class="hint" id="cText" style="font-size:14.5px;margin:4px 0 0"></p>
+      <div class="btns"><button class="btn ghost" data-close type="button">Cancel</button><button class="btn danger" id="cOk" type="button" style="background:var(--red);color:#fff">Delete</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"><span id="toastMsg"></span><button id="toastAct" hidden></button></div>
+
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = window.PLCore;
+  var KEY = 'pocketledger_local_expenses_v1', CAT_KEY = 'pocketledger_local_categories_v1';
+  var MODES = ['UPI', 'Credit Card', 'Debit Card', 'NetBanking', 'Cash'];
+  var PALETTE = { 'Food & Dining': '#FFB347', 'Commute & Fuel': '#4BE3A5', 'Shopping & E-Commerce': '#8B8CFF', 'Groceries': '#A3E635', 'Sports & Recreation': '#38BDF8', 'Bills & Subscriptions': '#FF7AB6', 'Personal Care': '#C084FC', 'Health & Fitness': '#2DD4BF', 'Other': '#94A3B8' };
+  var EXTRA = ['#F472B6', '#60A5FA', '#FACC15', '#34D399', '#FB923C', '#A78BFA'];
+  var IS_ANDROID = !!window.AndroidBridge;
+  var IS_IOS = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plSave);
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+
+  var now0 = new Date();
+  var S = { expenses: [], categories: [], y: now0.getFullYear(), m: now0.getMonth() + 1, all: false, cat: 'ALL', q: '',
+            editId: null, fCat: 'Other', fMode: 'UPI', catTouched: false, exp: { fmt: 'xlsx', all: false }, undo: null };
+
+  /* ---------------- storage ---------------- */
+  function load() {
+    var ex = null, ca = null;
+    try { ex = JSON.parse(localStorage.getItem(KEY) || 'null'); ca = JSON.parse(localStorage.getItem(CAT_KEY) || 'null'); } catch (e) {}
+    if (!ex && window.__PL_SEED) { try { var s = JSON.parse(window.__PL_SEED); ex = s.expenses; ca = s.categories; } catch (e) {} }
+    S.expenses = (Array.isArray(ex) ? ex : []).filter(function (e) { return e && e.id && Number(e.amount) > 0; });
+    S.categories = Array.isArray(ca) && ca.length ? ca : C.DEFAULT_CATEGORIES.slice();
+    S.expenses.forEach(function (e) { if (S.categories.indexOf(e.category) < 0 && e.category) S.categories.push(e.category); });
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S.expenses)); localStorage.setItem(CAT_KEY, JSON.stringify(S.categories)); } catch (e) {}
+    try { window.webkit.messageHandlers.plPersist.postMessage(JSON.stringify({ expenses: S.expenses, categories: S.categories })); } catch (e) {}
+  }
+
+  /* ---------------- formatting ---------------- */
+  function inr(n) {
+    n = Number(n) || 0;
+    var frac = Math.abs(n * 100 % 100) > 0.5;
+    return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: frac ? 2 : 0, maximumFractionDigits: 2 });
+  }
+  function colorOf(cat) {
+    if (PALETTE[cat]) return PALETTE[cat];
+    var h = 0; for (var i = 0; i < cat.length; i++) h = (h * 31 + cat.charCodeAt(i)) >>> 0;
+    return EXTRA[h % EXTRA.length];
+  }
+  function alpha(hex, a) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+  function today() { return C.nowLocal().slice(0, 10); }
+  function dayLabel(d) {
+    if (d === today()) return 'Today';
+    var y = new Date(); y.setDate(y.getDate() - 1);
+    if (d === C.nowLocal(y).slice(0, 10)) return 'Yesterday';
+    var dt = new Date(d + 'T00:00:00');
+    return isNaN(dt) ? d : dt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+  function timeLabel(s) {
+    if (!s || s.length < 16) return '';
+    var h = +s.slice(11, 13), ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+    return h + ':' + s.slice(14, 16) + ' ' + ap;
+  }
+  function monthName(y, m) { return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }); }
+  function key(y, m) { return y + '-' + pad(m); }
+  function curKey() { return key(S.y, S.m); }
+  function prevKey() { return S.m === 1 ? key(S.y - 1, 12) : key(S.y, S.m - 1); }
+  function nowKey() { return C.nowLocal().slice(0, 7); }
+
+  /* ---------------- render ---------------- */
+  function inPeriod(e) { return S.all || String(e.date).slice(0, 7) === curKey(); }
+
+  function render() {
+    $('#plabel').textContent = S.all ? 'All time' : monthName(S.y, S.m);
+    $('#prev').disabled = S.all; $('#next').disabled = S.all || curKey() >= nowKey();
+
+    var inP = S.expenses.filter(inPeriod);
+    var total = inP.reduce(function (a, e) { return a + Number(e.amount); }, 0);
+    var totals = {};
+    inP.forEach(function (e) { totals[e.category] = (totals[e.category] || 0) + Number(e.amount); });
+    var cats = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; });
+
+    var sub = inP.length + ' expense' + (inP.length === 1 ? '' : 's');
+    if (!S.all) {
+      var prev = S.expenses.filter(function (e) { return String(e.date).slice(0, 7) === prevKey(); })
+        .reduce(function (a, e) { return a + Number(e.amount); }, 0);
+      if (prev > 0 && total > 0) {
+        var d = Math.round((total - prev) / prev * 100);
+        sub = '<span class="delta ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '▲ ' : '▼ ') + Math.abs(d) + '%</span> vs last month · ' + sub;
+      }
+    }
+    var bar = cats.map(function (c) { return '<i style="flex:' + totals[c] + ';background:' + colorOf(c) + '"></i>'; }).join('');
+    var rows = cats.slice(0, 5).map(function (c) {
+      return '<button class="crow' + (S.cat === c ? ' on' : '') + '" data-cat="' + esc(c) + '"><span class="dot" style="background:' + colorOf(c) + '"></span>' +
+        '<span class="cn">' + esc(c) + '</span><span class="pc num">' + Math.round(totals[c] / total * 100) + '%</span><span class="ca num">' + inr(totals[c]) + '</span></button>';
+    }).join('');
+    $('#hero').innerHTML =
+      '<div class="hero-top"><span class="eyebrow">Total spent</span><div class="seg" id="scope"><button data-all="0" class="' + (S.all ? '' : 'on') + '">Month</button><button data-all="1" class="' + (S.all ? 'on' : '') + '">All</button></div></div>' +
+      '<div class="total num">' + inr(total) + '</div><div class="sub">' + sub + '</div>' +
+      (cats.length ? '<div class="bar">' + bar + '</div>' + rows : '');
+
+    // category chips (only categories that have spend in this period, plus the active one)
+    var chipCats = cats.slice(); if (S.cat !== 'ALL' && chipCats.indexOf(S.cat) < 0) chipCats.push(S.cat);
+    $('#chips').innerHTML = cats.length || S.cat !== 'ALL'
+      ? '<button class="chip' + (S.cat === 'ALL' ? ' on' : '') + '" data-cat="ALL">All</button>' +
+        chipCats.map(function (c) { return '<button class="chip' + (S.cat === c ? ' on' : '') + '" data-cat="' + esc(c) + '">' + esc(c) + '</button>'; }).join('')
+      : '';
+
+    // list
+    var q = S.q.toLowerCase().trim();
+    var list = inP.filter(function (e) {
+      if (S.cat !== 'ALL' && e.category !== S.cat) return false;
+      if (q && (e.merchant + ' ' + e.category + ' ' + (e.comment || '') + ' ' + (e.refId || '') + ' ' + (e.mode || '')).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+
+    if (!list.length) {
+      $('#list').innerHTML = '<div class="empty"><div class="big"><svg class="i" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg></div>' +
+        (S.expenses.length ? '<b>Nothing here</b>No expenses match this view.' : '<b>No expenses yet</b>Tap + to add one. Turn on auto-capture in Settings to log debit alerts for you.') + '</div>';
+      return;
+    }
+    var html = '', lastDay = '';
+    list.forEach(function (e) {
+      var day = String(e.date).slice(0, 10);
+      if (day !== lastDay) { html += '<div class="day"><span>' + esc(dayLabel(day)) + '</span></div>'; lastDay = day; }
+      var col = colorOf(e.category), t = timeLabel(e.date);
+      html += '<button class="row" data-id="' + esc(e.id) + '">' +
+        '<span class="av" style="background:' + alpha(col, .16) + ';color:' + col + '">' + esc((e.merchant || '?').trim().charAt(0).toUpperCase() || '?') + '</span>' +
+        '<span class="mid"><span class="mn">' + esc(e.merchant) + '</span>' +
+        '<span class="ms">' + esc(e.category) + (e.mode ? ' · ' + esc(e.mode) : '') + (t ? ' · ' + t : '') + '</span>' +
+        (e.comment ? '<span class="note">' + esc(e.comment) + '</span>' : '') + '</span>' +
+        '<span class="rt"><span class="amt num">' + inr(e.amount) + '</span>' + (e.source !== 'Manual' ? '<i class="auto">AUTO</i>' : '') + '</span></button>';
+    });
+    $('#list').innerHTML = html;
+  }
+
+  /* ---------------- sheets & toast ---------------- */
+  var stack = [];
+  function openSheet(id) { var el = $('#' + id); el.classList.add('open'); el.setAttribute('aria-hidden', 'false'); stack.push(id); }
+  function closeSheet(id) {
+    var el = $('#' + id); el.classList.remove('open'); el.setAttribute('aria-hidden', 'true');
+    stack = stack.filter(function (x) { return x !== id; });
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  }
+  var toastTimer;
+  function toast(msg, actLabel, act) {
+    $('#toastMsg').textContent = msg;
+    var b = $('#toastAct'); b.hidden = !actLabel; b.textContent = actLabel || ''; b.onclick = function () { $('#toast').classList.remove('show'); if (act) act(); };
+    $('#toast').classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { $('#toast').classList.remove('show'); }, actLabel ? 5000 : 2600);
+  }
+  function confirmBox(title, text, okLabel, fn) {
+    $('#cTitle').textContent = title; $('#cText').textContent = text; $('#cOk').textContent = okLabel;
+    $('#cOk').onclick = function () { closeSheet('sh-confirm'); fn(); };
+    openSheet('sh-confirm');
+  }
+
+  /* ---------------- add / edit ---------------- */
+  function renderEntryChips() {
+    $('#fCats').innerHTML = S.categories.map(function (c) { return '<button type="button" class="chip' + (S.fCat === c ? ' on' : '') + '" data-c="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') +
+      '<button type="button" class="chip add" id="chipNew">+ New</button>';
+    var modes = MODES.slice(); if (S.fMode && modes.indexOf(S.fMode) < 0) modes.push(S.fMode);
+    $('#fModes').innerHTML = modes.map(function (m) { return '<button type="button" class="chip' + (S.fMode === m ? ' on' : '') + '" data-m="' + esc(m) + '">' + esc(m) + '</button>'; }).join('');
+  }
+  function openEntry(id) {
+    var e = id ? S.expenses.filter(function (x) { return x.id === id; })[0] : null;
+    S.editId = e ? e.id : null; S.catTouched = !!e;
+    $('#entryTitle').textContent = e ? 'Edit expense' : 'New expense';
+    $('#pasteWrap').hidden = !!e; $('#pasteBox').hidden = true; $('#pasteText').value = ''; $('#pasteStatus').textContent = '';
+    $('#fAmount').value = e ? String(e.amount) : ''; $('#fMerchant').value = e ? e.merchant : '';
+    $('#fDate').value = e && String(e.date).length >= 16 ? String(e.date).slice(0, 16) : C.nowLocal();
+    $('#fNote').value = e ? (e.comment || '') : '';
+    S.fCat = e ? e.category : 'Other'; S.fMode = e ? (e.mode || 'UPI') : 'UPI';
+    $('#newCatBox').hidden = true; $('#fDelete').hidden = !e;
+    renderEntryChips(); openSheet('sh-entry');
+    if (!e) setTimeout(function () { $('#fAmount').focus(); }, 320);
+  }
+  function saveEntry() {
+    var amt = parseFloat(String($('#fAmount').value).replace(/,/g, ''));
+    var merchant = $('#fMerchant').value.trim();
+    if (!(amt > 0)) { toast('Enter an amount'); return; }
+    if (!merchant) { toast('Enter who you paid'); return; }
+    var date = $('#fDate').value || C.nowLocal(), note = $('#fNote').value.trim();
+    if (S.editId) {
+      var e = S.expenses.filter(function (x) { return x.id === S.editId; })[0];
+      if (e) { e.amount = amt; e.merchant = merchant; e.category = S.fCat; e.mode = S.fMode; e.date = date; e.comment = note; }
+    } else {
+      S.expenses.unshift({ id: 'exp-' + Date.now() + Math.floor(Math.random() * 1000), date: date, merchant: merchant, category: S.fCat, amount: amt, mode: S.fMode, source: 'Manual', refId: '', comment: note, rawNotification: S.pasted || '' });
+      var k = date.slice(0, 7); if (!S.all && k !== curKey()) { S.y = +k.slice(0, 4); S.m = +k.slice(5, 7); }
+    }
+    S.pasted = ''; save(); render(); closeSheet('sh-entry'); toast(S.editId ? 'Changes saved' : 'Added ' + inr(amt));
+  }
+
+  /* ---------------- auto-capture ---------------- */
+  function ingest(text) {
+    var p = C.parseMessage(text);
+    if (p.kind !== 'debit') return p;                 // credits, OTPs, promos: never logged
+    if (C.isDuplicate(S.expenses, p)) return { kind: 'duplicate' };
+    S.expenses.unshift({ id: 'exp-' + Date.now() + Math.floor(Math.random() * 1000), date: p.date, merchant: p.merchant, category: p.category, amount: p.amount, mode: p.mode, source: 'Auto', refId: p.refId, comment: '', rawNotification: p.raw });
+    save(); render(); toast('Logged ' + inr(p.amount) + ' · ' + p.merchant);
+    return p;
+  }
+  function pull() {
+    try {
+      if (window.AndroidBridge) JSON.parse(AndroidBridge.drainQueue() || '[]').forEach(function (t) { try { ingest(t); } catch (e) {} });
+    } catch (e) {}
+    refreshSettings();
+  }
+  function refreshSettings() {
+    if (!IS_ANDROID) return;
+    $('#autoRow').hidden = false;
+    var on = false; try { on = AndroidBridge.isListenerEnabled(); } catch (e) {}
+    $('#autoBtn').textContent = on ? 'On' : 'Enable'; $('#autoBtn').className = 'pill' + (on ? '' : ' go');
+    $('#autoSmall').textContent = on ? 'Logging debit alerts automatically. Credits are ignored.' : 'Allow notification access so debit alerts are logged for you.';
+  }
+
+  /* ---------------- export ---------------- */
+  function exportList() {
+    var k = curKey();
+    return S.expenses.filter(function (e) { return S.exp.all || String(e.date).slice(0, 7) === k; })
+      .map(function (e) { var c = {}; for (var p in e) c[p] = e[p]; c.source = e.source === 'Manual' ? 'Manual' : 'Auto'; return c; });
+  }
+  function refreshExport() {
+    $('#expMonthBtn').textContent = monthName(S.y, S.m);
+    $$('#expFmt button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === S.exp.fmt); });
+    $$('#expRange button').forEach(function (b) { b.classList.toggle('on', (b.dataset.v === 'all') === S.exp.all); });
+    var l = exportList(), tot = l.reduce(function (a, e) { return a + Number(e.amount); }, 0);
+    $('#expSum').innerHTML = '<b>' + l.length + '</b> expense' + (l.length === 1 ? '' : 's') + ' · <b>' + inr(tot) + '</b>';
+    $('#expBtns').innerHTML = IS_ANDROID
+      ? '<button class="btn primary" data-go="save">Save to Downloads</button><button class="btn ghost" data-go="share">Share…</button>'
+      : '<button class="btn primary" data-go="save">' + (IS_IOS ? 'Save or share' : 'Download') + '</button>';
+  }
+  function deliver(name, mime, data, how) {
+    var b64 = C.toBase64(data), r = '';
+    try {
+      if (IS_ANDROID) r = how === 'share' ? AndroidBridge.shareFile(name, mime, b64) : AndroidBridge.saveFile(name, mime, b64);
+      else if (IS_IOS) { window.webkit.messageHandlers.plSave.postMessage({ name: name, mime: mime, base64: b64 }); r = 'ok:'; }
+      else {
+        var blob = new Blob([typeof data === 'string' ? data : data.buffer], { type: mime }), a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); r = 'ok:';
+      }
+    } catch (e) { r = 'err:' + e.message; }
+    if (String(r).indexOf('err') === 0) toast('Could not save the file');
+    else if (r === 'shared') toast('Choose where to send it');
+    else if (String(r).indexOf('ok:') === 0 && r.length > 3) toast('Saved to ' + r.slice(3));
+    return r;
+  }
+  function doExport(how) {
+    var l = exportList();
+    if (!l.length) { toast('Nothing to export for this range'); return; }
+    var base = 'PocketLedger_' + (S.exp.all ? 'All_' + today() : curKey());
+    if (S.exp.fmt === 'xlsx') deliver(base + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', C.buildXlsx(l), how);
+    else deliver(base + '.csv', 'text/csv', C.buildCsv(l), how);
+  }
+
+  /* ---------------- events ---------------- */
+  document.addEventListener('click', function (ev) {
+    var t = ev.target, el;
+    if ((el = t.closest('[data-close]'))) { var w = el.closest('.sheet-wrap'); if (w) closeSheet(w.id); return; }
+    if ((el = t.closest('#scope button'))) { S.all = el.dataset.all === '1'; S.cat = 'ALL'; render(); return; }
+    if ((el = t.closest('.crow, #chips .chip'))) { var c = el.dataset.cat; S.cat = (S.cat === c || c === 'ALL') ? 'ALL' : c; render(); return; }
+    if ((el = t.closest('.row'))) { openEntry(el.dataset.id); return; }
+    if ((el = t.closest('#fCats .chip[data-c]'))) { S.fCat = el.dataset.c; S.catTouched = true; renderEntryChips(); return; }
+    if (t.closest('#chipNew')) { $('#newCatBox').hidden = false; $('#newCat').focus(); return; }
+    if ((el = t.closest('#fModes .chip'))) { S.fMode = el.dataset.m; renderEntryChips(); return; }
+    if ((el = t.closest('#expFmt button'))) { S.exp.fmt = el.dataset.v; refreshExport(); return; }
+    if ((el = t.closest('#expRange button'))) { S.exp.all = el.dataset.v === 'all'; refreshExport(); return; }
+    if ((el = t.closest('#expBtns [data-go]'))) { doExport(el.dataset.go); return; }
+  });
+  $('#prev').onclick = function () { if (S.m === 1) { S.m = 12; S.y--; } else S.m--; S.cat = 'ALL'; render(); };
+  $('#next').onclick = function () { if (S.m === 12) { S.m = 1; S.y++; } else S.m++; S.cat = 'ALL'; render(); };
+  $('#fab').onclick = function () { openEntry(null); };
+  $('#btnExport').onclick = function () { S.exp.all = S.all; refreshExport(); openSheet('sh-export'); };
+  $('#btnSettings').onclick = function () { refreshSettings(); openSheet('sh-settings'); };
+  $('#q').addEventListener('input', function (e) { S.q = e.target.value; render(); });
+  $('#fSave').onclick = saveEntry;
+  $('#fDelete').onclick = function () {
+    var i = S.expenses.map(function (x) { return x.id; }).indexOf(S.editId); if (i < 0) return;
+    var gone = S.expenses.splice(i, 1)[0]; save(); render(); closeSheet('sh-entry');
+    toast('Expense deleted', 'Undo', function () { S.expenses.splice(Math.min(i, S.expenses.length), 0, gone); save(); render(); });
+  };
+  $('#fMerchant').addEventListener('input', function (e) {
+    if (S.catTouched) return;
+    var c = C.inferCategory(e.target.value);
+    if (c !== S.fCat && (c !== 'Other' || !e.target.value)) { S.fCat = c; renderEntryChips(); }
+  });
+  $('#newCatAdd').onclick = function () {
+    var v = $('#newCat').value.trim(); if (!v) return;
+    if (S.categories.indexOf(v) < 0) S.categories.push(v);
+    S.fCat = v; S.catTouched = true; $('#newCat').value = ''; $('#newCatBox').hidden = true; save(); renderEntryChips();
+  };
+  $('#togglePaste').onclick = function () { var b = $('#pasteBox'); b.hidden = !b.hidden; if (!b.hidden) $('#pasteText').focus(); };
+  $('#detect').onclick = function () {
+    var p = C.parseMessage($('#pasteText').value), st = $('#pasteStatus');
+    if (p.kind !== 'debit') { st.className = 'hint bad'; st.textContent = p.reason; return; }
+    $('#fAmount').value = p.amount; $('#fMerchant').value = p.merchant; S.fCat = p.category; S.fMode = p.mode; S.catTouched = true; S.pasted = p.raw;
+    if (S.categories.indexOf(p.category) < 0) S.categories.push(p.category);
+    renderEntryChips(); st.className = 'hint ok'; st.textContent = 'Found ' + inr(p.amount) + ' · ' + p.merchant;
+  };
+  $('#autoBtn').onclick = function () { try { AndroidBridge.openNotificationAccess(); } catch (e) {} };
+  $('#btnBackup').onclick = function () {
+    deliver('PocketLedger_backup_' + today() + '.json', 'application/json', JSON.stringify({ app: 'PocketLedger', expenses: S.expenses, categories: S.categories }, null, 2), 'save');
+  };
+  $('#restoreInput').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var d = JSON.parse(r.result); if (!Array.isArray(d.expenses)) throw 0;
+        var have = {}; S.expenses.forEach(function (x) { have[x.id] = 1; }); var added = 0;
+        d.expenses.forEach(function (x) { if (x && x.id && Number(x.amount) > 0 && !have[x.id]) { S.expenses.push(x); added++; if (S.categories.indexOf(x.category) < 0 && x.category) S.categories.push(x.category); } });
+        save(); render(); closeSheet('sh-settings'); toast('Restored ' + added + ' expense' + (added === 1 ? '' : 's'));
+      } catch (err) { toast('That is not a PocketLedger backup'); }
+      e.target.value = '';
     };
-
-    const SAMPLE_NOTIFICATIONS = [
-      "Paid ₹165.00 to RAPIDO BIKE TAXI using Google Pay on 16-11-2026. UPI Ref: 632110982341.",
-      "Rs. 540.00 debited from A/c XX4821 on 16-11-26 to VPA zomato@hdfcbank (UPI Ref 632189445512).",
-      "INR 850.00 spent on HDFC Bank Credit Card XX9012 at TSG SPORTS ARENA on 16-Nov-2026.",
-      "Rs 1,499.00 debited from A/c XX4821 towards AMAZON PAY INDIA; UPI Ref 632199887711.",
-      "Paid ₹420.00 to SHELL PETROL PUMP via UPI Ref 632177665544."
-    ];
-
-    const INITIAL_EXPENSES = [
-      {
-        id: 'exp-101',
-        date: '2026-11-16T09:30',
-        merchant: 'Rapido Bike Taxi',
-        category: 'Commute & Fuel',
-        amount: 145.00,
-        mode: 'UPI / Google Pay',
-        source: 'Notification',
-        refId: '632109481201',
-        comment: 'Morning commute to office',
-        rawNotification: 'Paid ₹145.00 to Rapido Bike Taxi using Google Pay. UPI Ref 632109481201'
-      },
-      {
-        id: 'exp-102',
-        date: '2026-11-15T20:15',
-        merchant: 'TSG Sports Arena',
-        category: 'Sports & Recreation',
-        amount: 600.00,
-        mode: 'UPI / Google Pay',
-        source: 'Notification',
-        refId: '632088319044',
-        comment: 'Evening badminton court booking with friends',
-        rawNotification: 'Rs. 600.00 debited from A/c XX4821 to VPA tsgsports@okaxis (UPI Ref 632088319044)'
-      },
-      {
-        id: 'exp-103',
-        date: '2026-11-14T14:20',
-        merchant: 'Amazon India',
-        category: 'Shopping & E-Commerce',
-        amount: 799.00,
-        mode: 'Credit Card',
-        source: 'Notification',
-        refId: 'AMZ-884120',
-        comment: 'ShineXPro helmet cleaner & microfiber cloth',
-        rawNotification: 'INR 799.00 spent on Card XX9012 at AMAZON INDIA on 14-Nov-2026'
-      },
-      {
-        id: 'exp-104',
-        date: '2026-11-13T13:10',
-        merchant: 'Swiggy',
-        category: 'Food & Dining',
-        amount: 320.00,
-        mode: 'UPI / Google Pay',
-        source: 'Manual',
-        refId: '631877120931',
-        comment: 'Lunch order during audit review',
-        rawNotification: ''
-      }
-    ];
-
-    let expenses = [];
-    let categories = [];
-    let chartInstance = null;
-    let simIndex = 0;
-
-    function safeLoadStorage() {
-      try {
-        const rawExp = localStorage.getItem(STORAGE_KEY);
-        const rawCat = localStorage.getItem(CAT_STORAGE_KEY);
-        expenses = rawExp ? JSON.parse(rawExp) : [...INITIAL_EXPENSES];
-        categories = rawCat ? JSON.parse(rawCat) : [...DEFAULT_CATEGORIES];
-      } catch (e) {
-        expenses = [...INITIAL_EXPENSES];
-        categories = [...DEFAULT_CATEGORIES];
-        const badge = document.getElementById('storageBadge');
-        if (badge) badge.textContent = 'In-Memory Session Mode';
-      }
-    }
-
-    function safeSaveStorage() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-        localStorage.setItem(CAT_STORAGE_KEY, JSON.stringify(categories));
-      } catch (e) {
-        // Ignore storage errors in restricted sandboxes
-      }
-    }
-
-    function showToast(msg) {
-      const box = document.getElementById('toastBox');
-      box.textContent = msg;
-      box.classList.remove('hidden');
-      setTimeout(() => {
-        box.classList.add('hidden');
-      }, 2600);
-    }
-
-    function formatINR(num) {
-      const val = Number(num) || 0;
-      return '₹' + val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    function inferCategory(merchant, rawText) {
-      const text = ((merchant || '') + ' ' + (rawText || '')).toLowerCase();
-      if (/rapido|uber|ola|petrol|shell|hpcl|bpcl|irctc|metro|ferry|m2m|toll|parking|auto|cab/.test(text)) {
-        return 'Commute & Fuel';
-      }
-      if (/swiggy|zomato|restaurant|cafe|starbucks|mcdonald|dominos|pizza|dining|food|baker/.test(text)) {
-        return 'Food & Dining';
-      }
-      if (/blinkit|zepto|instamart|bigbasket|dmart|grocery|supermarket|nature/.test(text)) {
-        return 'Groceries';
-      }
-      if (/amazon|flipkart|myntra|ajio|nykaa|decathlon|kreo|msi|store|retail/.test(text)) {
-        return 'Shopping & E-Commerce';
-      }
-      if (/tsg|badminton|indikarting|timezone|bookmyshow|turf|arena|sport|game/.test(text)) {
-        return 'Sports & Recreation';
-      }
-      if (/pilgrim|ravel|hivado|perfume|salon|barber|grooming/.test(text)) {
-        return 'Personal Care';
-      }
-      if (/gym|fitness|cult|pharmacy|apollo|medplus|hospital|clinic|protein/.test(text)) {
-        return 'Health & Fitness';
-      }
-      if (/airtel|jio|vi|electricity|adani|tata power|netflix|spotify|prime|recharge|bill/.test(text)) {
-        return 'Bills & Subscriptions';
-      }
-      return 'Other';
-    }
-
-    function parseNotificationText(rawText) {
-      if (!rawText || !rawText.trim()) return null;
-      const text = rawText.trim();
-
-      // 1. Extract Amount (handles Rs., INR, ₹, debited by, Paid, etc.)
-      let amount = null;
-      const amtRegex = /(?:rs\.?|inr|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)|([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:rs\.?|inr|₹)/i;
-      const amtMatch = text.match(amtRegex);
-      if (amtMatch) {
-        const numStr = (amtMatch[1] || amtMatch[2]).replace(/,/g, '');
-        amount = parseFloat(numStr);
-      } else {
-        const fallbackNum = text.match(/(?:debited|paid|spent|for)\s+(?:by\s+)?([0-9,]+(?:\.[0-9]{1,2})?)/i);
-        if (fallbackNum) {
-          amount = parseFloat(fallbackNum[1].replace(/,/g, ''));
-        }
-      }
-
-      // 2. Extract Payment Mode
-      let mode = 'UPI / Google Pay';
-      if (/credit card|cc\s+xx/i.test(text)) mode = 'Credit Card';
-      else if (/debit card|dc\s+xx|atm/i.test(text)) mode = 'Debit Card';
-      else if (/netbanking|neft|imps|rtgs/i.test(text)) mode = 'NetBanking';
-
-      // 3. Extract Reference ID
-      let refId = '';
-      const refMatch = text.match(/(?:upi\s*ref|ref\s*no\.?|transaction\s*id|txn\s*id|utr)[:\s#-]*([a-zA-Z0-9-]{6,20})/i);
-      if (refMatch) {
-        refId = refMatch[1];
-      }
-
-      // 4. Extract Merchant / Payee
-      let merchant = 'Unknown Merchant';
-      const vpaMatch = text.match(/to\s+vpa\s+([a-zA-Z0-9._-]+@[a-zA-Z0-9]+)/i);
-      const paidToMatch = text.match(/(?:paid\s+(?:₹|rs\.?|inr)?\s*[0-9,.]+\s+to|towards|at|to)\s+([A-Za-z0-9\s&._-]{2,35}?)(?:\s+on\b|\s+using\b|\s+via\b|\s+upi\b|[.;,(\n]|$)/i);
-
-      if (paidToMatch && paidToMatch[1] && !/^vpa$/i.test(paidToMatch[1].trim())) {
-        merchant = paidToMatch[1].trim();
-      } else if (vpaMatch) {
-        const handle = vpaMatch[1].split('@')[0].replace(/[0-9._-]+/g, ' ').trim();
-        merchant = handle ? handle.toUpperCase() : vpaMatch[1];
-      }
-
-      // Clean up merchant capitalization
-      if (merchant.length > 2 && merchant === merchant.toUpperCase()) {
-        merchant = merchant.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-      }
-
-      const category = inferCategory(merchant, text);
-
-      // Current local ISO datetime
-      const now = new Date();
-      const tzOffset = now.getTimezoneOffset() * 60000;
-      const localISOTime = new Date(now - tzOffset).toISOString().slice(0, 16);
-
-      return {
-        amount: amount || 0,
-        merchant,
-        category,
-        mode,
-        refId,
-        date: localISOTime,
-        rawNotification: text
-      };
-    }
-
-    function populateCategoryDropdowns() {
-      const manCat = document.getElementById('manCategory');
-      const filterCat = document.getElementById('filterCategory');
-      const currentFilter = filterCat.value || 'ALL';
-
-      manCat.innerHTML = '';
-      categories.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        manCat.appendChild(opt);
-      });
-
-      filterCat.innerHTML = '<option value="ALL">All Categories</option>';
-      categories.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        filterCat.appendChild(opt);
-      });
-      filterCat.value = categories.includes(currentFilter) ? currentFilter : 'ALL';
-    }
-
-    function getFilteredExpenses() {
-      const search = (document.getElementById('filterSearch').value || '').toLowerCase().trim();
-      const cat = document.getElementById('filterCategory').value;
-      const src = document.getElementById('filterSource').value;
-
-      return expenses.filter(item => {
-        if (cat !== 'ALL' && item.category !== cat) return false;
-        if (src !== 'ALL' && item.source !== src) return false;
-        if (search) {
-          const hay = `${item.merchant} ${item.category} ${item.comment || ''} ${item.refId || ''} ${item.mode || ''}`.toLowerCase();
-          if (!hay.includes(search)) return false;
-        }
-        return true;
-      });
-    }
-
-    function renderAll() {
-      const filtered = getFilteredExpenses();
-
-      // KPIs
-      const total = filtered.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
-      document.getElementById('kpiTotalSpend').textContent = formatINR(total);
-      document.getElementById('kpiTxCount').textContent = `${filtered.length} transaction${filtered.length === 1 ? '' : 's'} shown`;
-
-      const nowMonth = new Date().toISOString().slice(0, 7);
-      const monthTx = expenses.filter(x => (x.date || '').startsWith(nowMonth));
-      const monthSpend = monthTx.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
-      const avg = filtered.length ? total / filtered.length : 0;
-      document.getElementById('kpiMonthSpend').textContent = formatINR(monthSpend);
-      document.getElementById('kpiAvgSpend').textContent = `Avg ${formatINR(avg)} / purchase`;
-
-      // Top Category
-      const catTotals = {};
-      filtered.forEach(x => {
-        catTotals[x.category] = (catTotals[x.category] || 0) + (Number(x.amount) || 0);
-      });
-      const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
-      if (sortedCats.length > 0) {
-        document.getElementById('kpiTopCategory').textContent = sortedCats[0][0];
-        document.getElementById('kpiTopCategoryAmt').textContent = formatINR(sortedCats[0][1]);
-      } else {
-        document.getElementById('kpiTopCategory').textContent = '—';
-        document.getElementById('kpiTopCategoryAmt').textContent = '₹0.00';
-      }
-
-      const withComments = expenses.filter(x => x.comment && x.comment.trim().length > 0).length;
-      document.getElementById('kpiCommentCount').textContent = `${withComments} of ${expenses.length} with notes`;
-
-      renderTable(filtered);
-      renderChart(sortedCats, total);
-    }
-
-    function renderTable(list) {
-      const tbody = document.getElementById('expenseTableBody');
-      tbody.innerHTML = '';
-
-      if (list.length === 0) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="7" class="py-8 text-center text-slate-500">No matching purchases found. Simulate a notification above or add an entry manually.</td>`;
-        tbody.appendChild(tr);
-        return;
-      }
-
-      list.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-800/40 transition';
-
-        const formattedDate = (item.date || '').replace('T', ' ');
-        const badgeColor = item.source === 'Notification'
-          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-          : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
-
-        // Category select options
-        const catOptions = categories.map(c =>
-          `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`
-        ).join('');
-
-        tr.innerHTML = `
-          <td class="py-2.5 px-3 whitespace-nowrap text-slate-300 font-mono text-[11px]">${formattedDate}</td>
-          <td class="py-2.5 px-3">
-            <div class="font-semibold text-white">${escapeHtml(item.merchant)}</div>
-            ${item.refId ? `<div class="text-[10px] text-slate-500">Ref: ${escapeHtml(item.refId)}</div>` : ''}
-          </td>
-          <td class="py-2.5 px-3">
-            <select data-id="${item.id}" class="row-cat-select rounded bg-slate-900 border border-slate-700 px-2 py-1 text-xs text-amber-300 focus:outline-none focus:border-emerald-500">
-              ${catOptions}
-            </select>
-          </td>
-          <td class="py-2.5 px-3 text-right font-bold text-white whitespace-nowrap">${formatINR(item.amount)}</td>
-          <td class="py-2.5 px-3 whitespace-nowrap">
-            <div class="text-slate-300">${escapeHtml(item.mode || 'UPI')}</div>
-            <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] border ${badgeColor}">${escapeHtml(item.source || 'Manual')}</span>
-          </td>
-          <td class="py-2.5 px-3">
-            <input type="text" data-id="${item.id}" value="${escapeHtml(item.comment || '')}" placeholder="Click to add a comment..." class="row-comment-input w-full rounded bg-slate-900/70 hover:bg-slate-900 focus:bg-slate-900 border border-transparent focus:border-emerald-500 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition" />
-          </td>
-          <td class="py-2.5 px-3 text-center">
-            <button type="button" data-id="${item.id}" class="row-delete-btn text-slate-500 hover:text-rose-400 p-1 transition" title="Delete entry">
-              ✕
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      // Attach listeners for inline category change, comment edit, and delete
-      tbody.querySelectorAll('.row-cat-select').forEach(sel => {
-        sel.addEventListener('change', (e) => {
-          const id = e.target.getAttribute('data-id');
-          const exp = expenses.find(x => x.id === id);
-          if (exp) {
-            exp.category = e.target.value;
-            safeSaveStorage();
-            renderAll();
-            showToast('Category updated');
-          }
-        });
-      });
-
-      tbody.querySelectorAll('.row-comment-input').forEach(inp => {
-        inp.addEventListener('change', (e) => {
-          const id = e.target.getAttribute('data-id');
-          const exp = expenses.find(x => x.id === id);
-          if (exp) {
-            exp.comment = e.target.value.trim();
-            safeSaveStorage();
-            renderAll();
-            showToast('Comment saved locally');
-          }
-        });
-      });
-
-      tbody.querySelectorAll('.row-delete-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const id = e.currentTarget.getAttribute('data-id');
-          expenses = expenses.filter(x => x.id !== id);
-          safeSaveStorage();
-          renderAll();
-          showToast('Entry removed');
-        });
-      });
-    }
-
-    function renderChart(sortedCats, total) {
-      const ctx = document.getElementById('categoryChart').getContext('2d');
-      const labels = sortedCats.map(x => x[0]);
-      const values = sortedCats.map(x => x[1]);
-      const colors = labels.map((l, idx) => CATEGORY_COLORS[l] || ['#38bdf8', '#fb7185', '#a3e635', '#c084fc'][idx % 4]);
-
-      if (chartInstance) {
-        chartInstance.destroy();
-      }
-
-      chartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: labels.length ? labels : ['No Data'],
-          datasets: [{
-            data: values.length ? values : [1],
-            backgroundColor: values.length ? colors : ['#334155'],
-            borderColor: '#0f172a',
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '64%',
-          plugins: {
-            legend: {
-              display: false
-            }
-          }
-        }
-      });
-
-      const legendContainer = document.getElementById('categoryLegendList');
-      legendContainer.innerHTML = '';
-      sortedCats.forEach(([cat, amt], idx) => {
-        const pct = total > 0 ? ((amt / total) * 100).toFixed(1) : '0.0';
-        const color = CATEGORY_COLORS[cat] || ['#38bdf8', '#fb7185', '#a3e635', '#c084fc'][idx % 4];
-        const row = document.createElement('div');
-        row.className = 'flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/50';
-        row.innerHTML = `
-          <div class="flex items-center gap-2 truncate">
-            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${color}"></span>
-            <span class="text-slate-200 truncate">${escapeHtml(cat)}</span>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <span class="text-slate-400 text-[11px]">${pct}%</span>
-            <span class="font-semibold text-white">${formatINR(amt)}</span>
-          </div>
-        `;
-        legendContainer.appendChild(row);
-      });
-    }
-
-    function escapeHtml(str) {
-      return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    function exportToExcel() {
-      const filtered = getFilteredExpenses();
-      if (typeof XLSX === 'undefined') {
-        exportToCsv();
-        return;
-      }
-
-      const ledgerRows = filtered.map(x => ({
-        'Date & Time': (x.date || '').replace('T', ' '),
-        'Merchant / Payee': x.merchant,
-        'Category': x.category,
-        'Amount (INR)': Number(x.amount) || 0,
-        'Payment Mode': x.mode || '',
-        'Capture Source': x.source || '',
-        'Reference ID': x.refId || '',
-        'Comment / Notes': x.comment || '',
-        'Raw Notification Text': x.rawNotification || ''
-      }));
-
-      // Category summary sheet
-      const catMap = {};
-      filtered.forEach(x => {
-        if (!catMap[x.category]) catMap[x.category] = { count: 0, total: 0 };
-        catMap[x.category].count += 1;
-        catMap[x.category].total += (Number(x.amount) || 0);
-      });
-      const summaryRows = Object.entries(catMap).map(([cat, info]) => ({
-        'Category': cat,
-        'Transaction Count': info.count,
-        'Total Spend (INR)': Number(info.total.toFixed(2))
-      }));
-
-      const wb = XLSX.utils.book_new();
-      const wsLedger = XLSX.utils.json_to_sheet(ledgerRows);
-      const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
-
-      XLSX.utils.book_append_sheet(wb, wsLedger, 'Expenses_Ledger');
-      XLSX.utils.book_append_sheet(wb, wsSummary, 'Category_Summary');
-
-      const todayStr = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, `Local_Expense_Tracker_${todayStr}.xlsx`);
-      showToast('Exported Excel (.xlsx) workbook!');
-    }
-
-    function exportToCsv() {
-      const filtered = getFilteredExpenses();
-      const headers = ['Date & Time', 'Merchant', 'Category', 'Amount (INR)', 'Payment Mode', 'Source', 'Ref ID', 'Comment'];
-      const rows = filtered.map(x => [
-        (x.date || '').replace('T', ' '),
-        `"${(x.merchant || '').replace(/"/g, '""')}"`,
-        `"${(x.category || '').replace(/"/g, '""')}"`,
-        Number(x.amount) || 0,
-        `"${(x.mode || '').replace(/"/g, '""')}"`,
-        `"${(x.source || '').replace(/"/g, '""')}"`,
-        `"${(x.refId || '').replace(/"/g, '""')}"`,
-        `"${(x.comment || '').replace(/"/g, '""')}"`
-      ]);
-
-      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Local_Expense_Tracker_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showToast('Exported CSV file!');
-    }
-
-    function updateLiveNotifPreview() {
-      const raw = document.getElementById('notifInput').value;
-      const box = document.getElementById('parsedPreviewBox');
-      const parsed = parseNotificationText(raw);
-      if (!parsed || !raw.trim()) {
-        box.classList.add('hidden');
-        return;
-      }
-      box.classList.remove('hidden');
-      document.getElementById('prevAmount').textContent = parsed.amount > 0 ? formatINR(parsed.amount) : 'Not detected';
-      document.getElementById('prevMerchant').textContent = parsed.merchant;
-      document.getElementById('prevCategory').textContent = parsed.category;
-      document.getElementById('prevMode').textContent = parsed.refId ? `${parsed.mode} (${parsed.refId})` : parsed.mode;
-    }
-
-    function initApp() {
-      safeLoadStorage();
-      populateCategoryDropdowns();
-
-      // Default datetime in manual form
-      const now = new Date();
-      const tzOffset = now.getTimezoneOffset() * 60000;
-      document.getElementById('manDate').value = new Date(now - tzOffset).toISOString().slice(0, 16);
-
-      // Check URL parameters for automated notification bridge (?auto_notif=...)
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const autoNotif = params.get('auto_notif');
-        if (autoNotif) {
-          const parsed = parseNotificationText(autoNotif);
-          if (parsed && parsed.amount > 0) {
-            expenses.unshift({
-              id: 'exp-' + Date.now(),
-              date: parsed.date,
-              merchant: parsed.merchant,
-              category: parsed.category,
-              amount: parsed.amount,
-              mode: parsed.mode,
-              source: 'Notification',
-              refId: parsed.refId,
-              comment: params.get('comment') || 'Auto-captured via notification link',
-              rawNotification: parsed.rawNotification
-            });
-            safeSaveStorage();
-            showToast(`Auto-logged ${formatINR(parsed.amount)} at ${parsed.merchant}`);
-          }
-        }
-      } catch (e) {
-        // Ignore URL parsing issues
-      }
-
-      // Event Listeners
-      document.getElementById('notifInput').addEventListener('input', updateLiveNotifPreview);
-
-      document.getElementById('simUpiBtn').addEventListener('click', () => {
-        const sample = SAMPLE_NOTIFICATIONS[simIndex % SAMPLE_NOTIFICATIONS.length];
-        simIndex++;
-        document.getElementById('notifInput').value = sample;
-        updateLiveNotifPreview();
-      });
-
-      document.getElementById('simCardBtn').addEventListener('click', () => {
-        const sample = "INR 1,250.00 spent on HDFC Bank Card XX9012 at SHELL PETROL PUMP on 16-Nov-2026 (Ref 88392011).";
-        document.getElementById('notifInput').value = sample;
-        updateLiveNotifPreview();
-      });
-
-      document.getElementById('btnParseAndSave').addEventListener('click', () => {
-        const raw = document.getElementById('notifInput').value;
-        const comment = document.getElementById('notifCommentInput').value.trim();
-        const parsed = parseNotificationText(raw);
-        if (!parsed || parsed.amount <= 0) {
-          showToast('Please paste or simulate a notification with a valid amount');
-          return;
-        }
-        expenses.unshift({
-          id: 'exp-' + Date.now(),
-          date: parsed.date,
-          merchant: parsed.merchant,
-          category: parsed.category,
-          amount: parsed.amount,
-          mode: parsed.mode,
-          source: 'Notification',
-          refId: parsed.refId,
-          comment: comment,
-          rawNotification: parsed.rawNotification
-        });
-        safeSaveStorage();
-        document.getElementById('notifInput').value = '';
-        document.getElementById('notifCommentInput').value = '';
-        updateLiveNotifPreview();
-        renderAll();
-        showToast(`Captured ${formatINR(parsed.amount)} (${parsed.category})`);
-      });
-
-      document.getElementById('manualExpenseForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const amount = parseFloat(document.getElementById('manAmount').value);
-        const merchant = document.getElementById('manMerchant').value.trim();
-        const category = document.getElementById('manCategory').value;
-        const date = document.getElementById('manDate').value;
-        const mode = document.getElementById('manMode').value;
-        const comment = document.getElementById('manComment').value.trim();
-
-        if (!amount || amount <= 0 || !merchant) return;
-
-        expenses.unshift({
-          id: 'exp-' + Date.now(),
-          date,
-          merchant,
-          category,
-          amount,
-          mode,
-          source: 'Manual',
-          refId: '',
-          comment,
-          rawNotification: ''
-        });
-        safeSaveStorage();
-        document.getElementById('manAmount').value = '';
-        document.getElementById('manMerchant').value = '';
-        document.getElementById('manComment').value = '';
-        renderAll();
-        showToast('Manual expense added locally');
-      });
-
-      document.getElementById('btnAddCategory').addEventListener('click', () => {
-        const val = document.getElementById('newCategoryInput').value.trim();
-        if (val && !categories.includes(val)) {
-          categories.push(val);
-          safeSaveStorage();
-          populateCategoryDropdowns();
-          document.getElementById('manCategory').value = val;
-          document.getElementById('newCategoryInput').value = '';
-          showToast(`Added category: ${val}`);
-        }
-      });
-
-      document.getElementById('filterSearch').addEventListener('input', renderAll);
-      document.getElementById('filterCategory').addEventListener('change', renderAll);
-      document.getElementById('filterSource').addEventListener('change', renderAll);
-
-      document.getElementById('btnExportExcel').addEventListener('click', exportToExcel);
-      document.getElementById('btnExportCsv').addEventListener('click', exportToCsv);
-
-      document.getElementById('btnBackupJson').addEventListener('click', () => {
-        const blob = new Blob([JSON.stringify({ expenses, categories }, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `PocketLedger_Local_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        showToast('Local JSON backup downloaded');
-      });
-
-      document.getElementById('importJsonInput').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          try {
-            const data = JSON.parse(evt.target.result);
-            if (Array.isArray(data.expenses)) {
-              expenses = data.expenses;
-              if (Array.isArray(data.categories)) categories = data.categories;
-              safeSaveStorage();
-              populateCategoryDropdowns();
-              renderAll();
-              showToast('Imported local JSON backup!');
-            }
-          } catch (err) {
-            showToast('Invalid JSON backup file');
-          }
-        };
-        reader.readAsText(file);
-      });
-
-      // Reset Modal
-      document.getElementById('btnClearAll').addEventListener('click', () => {
-        document.getElementById('resetModal').classList.remove('hidden');
-      });
-      document.getElementById('btnCancelReset').addEventListener('click', () => {
-        document.getElementById('resetModal').classList.add('hidden');
-      });
-      document.getElementById('btnConfirmReset').addEventListener('click', () => {
-        expenses = [...INITIAL_EXPENSES];
-        categories = [...DEFAULT_CATEGORIES];
-        safeSaveStorage();
-        populateCategoryDropdowns();
-        renderAll();
-        document.getElementById('resetModal').classList.add('hidden');
-        showToast('Reset to starter sample data');
-      });
-
-      // Tabs
-      const tabTracker = document.getElementById('tabBtnTracker');
-      const tabAndroid = document.getElementById('tabBtnAndroid');
-      const viewTracker = document.getElementById('viewTracker');
-      const viewAndroid = document.getElementById('viewAndroid');
-
-      tabTracker.addEventListener('click', () => {
-        viewTracker.classList.remove('hidden');
-        viewAndroid.classList.add('hidden');
-        tabTracker.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white transition';
-        tabAndroid.className = 'px-3 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white transition';
-      });
-
-      tabAndroid.addEventListener('click', () => {
-        viewTracker.classList.add('hidden');
-        viewAndroid.classList.remove('hidden');
-        tabAndroid.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white transition';
-        tabTracker.className = 'px-3 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white transition';
-      });
-
-      document.getElementById('btnTestUrlParams').addEventListener('click', () => {
-        const testAlert = "Rs. 280.00 debited from A/c XX4821 on 16-11-26 to VPA indikarting@okaxis (UPI Ref 632155599900)";
-        const parsed = parseNotificationText(testAlert);
-        expenses.unshift({
-          id: 'exp-' + Date.now(),
-          date: parsed.date,
-          merchant: parsed.merchant,
-          category: parsed.category,
-          amount: parsed.amount,
-          mode: parsed.mode,
-          source: 'Notification',
-          refId: parsed.refId,
-          comment: 'Simulated Android URL Bridge trigger',
-          rawNotification: parsed.rawNotification
-        });
-        safeSaveStorage();
-        tabTracker.click();
-        renderAll();
-        showToast('Simulated Android Auto-Listener capture!');
-      });
-
-      renderAll();
-    }
-
-    window.addEventListener('DOMContentLoaded', initApp);
-  </script>
+    r.readAsText(f);
+  });
+  $('#btnWipe').onclick = function () {
+    confirmBox('Delete all data?', 'Every expense on this device will be removed. Back up first if you might need them.', 'Delete everything', function () {
+      S.expenses = []; S.categories = C.DEFAULT_CATEGORIES.slice(); S.cat = 'ALL'; save(); render(); closeSheet('sh-settings'); toast('All data deleted');
+    });
+  };
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) pull(); });
+
+  /* ---------------- public API used by the Android / iOS wrappers ---------------- */
+  window.PL = {
+    pull: pull,
+    ingest: ingest,
+    ingestMany: function (arr) { (arr || []).forEach(function (t) { try { ingest(t); } catch (e) {} }); },
+    back: function () { if (!stack.length) return false; closeSheet(stack[stack.length - 1]); return true; }
+  };
+
+  /* ---------------- boot ---------------- */
+  load(); render(); pull();
+  setTimeout(function () {
+    var s = $('#splash'); s.classList.add('hide');
+    setTimeout(function () { s.style.display = 'none'; }, 400);
+  }, 1000);
+})();
+</script>
 </body>
 </html>
